@@ -43,3 +43,23 @@ export async function saveQuestionBank(
 export function genQuestionId(prefix: string): string {
   return `${prefix.toLowerCase()}-${Date.now().toString(36)}`;
 }
+
+// ─── Marks distribution ─────────────────────────────────────────────────────
+// Fast Track's total possible score is fixed regardless of how many questions
+// exist — each question's High/Medium/Low marks are scaled so the per-question
+// maxes always sum to this total, keeping the 5:3:1 High:Medium:Low ratio.
+export const FAST_TRACK_TOTAL_MARKS = 15;
+
+const GRADE_WEIGHT: Record<QuestionGrade, number> = { High: 1, Medium: 0.6, Low: 0.2 };
+
+export function redistributeMarks(questions: FastTrackQuestion[]): FastTrackQuestion[] {
+  if (questions.length === 0) return questions;
+  const perQuestion = FAST_TRACK_TOTAL_MARKS / questions.length;
+  return questions.map(q => ({
+    ...q,
+    rubric: q.rubric.map(r => ({
+      ...r,
+      marks: Math.round(perQuestion * GRADE_WEIGHT[r.grade] * 10) / 10,
+    })) as FastTrackQuestion["rubric"],
+  }));
+}

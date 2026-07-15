@@ -10,8 +10,8 @@ import Link from "next/link";
 import { useAuthContext } from "@/features/auth/AuthContext";
 import { ROLES } from "@/config/constants";
 import {
-  getQuestionBank, saveQuestionBank, genQuestionId,
-  type FastTrackQuestion,
+  getQuestionBank, saveQuestionBank, genQuestionId, redistributeMarks,
+  FAST_TRACK_TOTAL_MARKS, type FastTrackQuestion,
 } from "@/services/screening/questionBank.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -212,10 +212,8 @@ function GradeCard({ question, value, onChange, accent, editable, onQuestionChan
   const { code, title, sub, rubric } = question;
 
   if (editable) {
-    const setRubricField = (i: number, field: "desc" | "marks", val: string) => {
-      const nextRubric = rubric.map((r, ii) => ii === i
-        ? { ...r, [field]: field === "marks" ? (Number(val) || 0) : val }
-        : r) as FastTrackQuestion["rubric"];
+    const setRubricField = (i: number, field: "desc", val: string) => {
+      const nextRubric = rubric.map((r, ii) => ii === i ? { ...r, [field]: val } : r) as FastTrackQuestion["rubric"];
       onQuestionChange?.({ ...question, rubric: nextRubric });
     };
     return (
@@ -233,9 +231,10 @@ function GradeCard({ question, value, onChange, accent, editable, onQuestionChan
             <div key={r.grade} style={{ border: "1.5px solid #f0f0f0", borderRadius: 10, padding: "8px 10px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>{r.grade}</span>
-                <input type="number" value={r.marks} min={0}
-                  onChange={e => setRubricField(i, "marks", e.target.value)}
-                  style={{ width: 50, padding: "3px 6px", fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, textAlign: "center", fontFamily: "inherit" }} />
+                <span style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700, color: "#6b7280",
+                  background: "#f3f4f6", borderRadius: 6 }} title="Auto-distributed — not editable">
+                  {r.marks.toFixed(1)} pts
+                </span>
               </div>
               <textarea value={r.desc} rows={2}
                 onChange={e => setRubricField(i, "desc", e.target.value)}
@@ -443,10 +442,10 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
   const [ft_musicalBackground,  setFtBackground]      = useState("");
   const [ft_practiceCommitment, setFtPractice]        = useState("");
   const [ft_learningStyle,      setFtLearningStyle]   = useState("");
-  const [ft_questions,   setFtQuestions]   = useState<FastTrackQuestion[]>(GUITAR_TESTS);
+  const [ft_questions,   setFtQuestions]   = useState<FastTrackQuestion[]>(() => redistributeMarks(GUITAR_TESTS));
   const [ftGradeMap,     setFtGradeMap]    = useState<Record<string, Grade | null>>({});
   const [ftEditMode,     setFtEditMode]    = useState(false);
-  const [ftDraftQuestions, setFtDraftQuestions] = useState<FastTrackQuestion[]>(GUITAR_TESTS);
+  const [ftDraftQuestions, setFtDraftQuestions] = useState<FastTrackQuestion[]>(() => redistributeMarks(GUITAR_TESTS));
   const [ftBankSaving,   setFtBankSaving]  = useState(false);
 
   // ── JT state ────────────────────────────────────────────────────────────────
@@ -490,7 +489,10 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
   // ── Load Fast Track question bank (falls back to defaults if unsaved) ───────
   useEffect(() => {
     getQuestionBank("guitar").then(qs => {
-      if (qs && qs.length > 0) { setFtQuestions(qs); setFtDraftQuestions(qs); }
+      if (qs && qs.length > 0) {
+        const balanced = redistributeMarks(qs);
+        setFtQuestions(balanced); setFtDraftQuestions(balanced);
+      }
     }).catch(() => {});
   }, []);
 
@@ -600,16 +602,16 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
       code: `GT-${String(n).padStart(2, "0")}`,
       title: "New Question", sub: "",
       rubric: [
-        { grade: "High",   desc: "", marks: GRADE_SCORE.High },
-        { grade: "Medium", desc: "", marks: GRADE_SCORE.Medium },
-        { grade: "Low",    desc: "", marks: GRADE_SCORE.Low },
+        { grade: "High",   desc: "", marks: 0 },
+        { grade: "Medium", desc: "", marks: 0 },
+        { grade: "Low",    desc: "", marks: 0 },
       ],
     };
-    setFtDraftQuestions(qs => [...qs, newQ]);
+    setFtDraftQuestions(qs => redistributeMarks([...qs, newQ]));
   }
 
   function removeFtQuestion(id: string) {
-    setFtDraftQuestions(qs => qs.length > 1 ? qs.filter(q => q.id !== id) : qs);
+    setFtDraftQuestions(qs => qs.length > 1 ? redistributeMarks(qs.filter(q => q.id !== id)) : qs);
   }
 
   function updateFtDraftQuestion(id: string, updated: FastTrackQuestion) {
@@ -709,10 +711,6 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
                     ✓ Linked: {linkedStudent.name} ({linkedStudent.studentID})
                   </div>
                 )}
-              </div>
-              <div>
-                <label style={labelStyle}>Assessment ID</label>
-                <input value={assessmentId} readOnly style={{ ...inputStyle, color: "#9ca3af", background: "#f8f9fa" }} />
               </div>
             </div>
 
@@ -1138,7 +1136,12 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
             {stream === "fast-track" && (
               <div style={grid12} className="scr-grid">
                 {isAdmin && (
-                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {ftEditMode && (
+                      <span style={{ fontSize: 11, color: "#9ca3af", marginRight: "auto" }}>
+                        Marks auto-distribute evenly across all questions — total {FAST_TRACK_TOTAL_MARKS} pts
+                      </span>
+                    )}
                     {!ftEditMode ? (
                       <button type="button" onClick={() => { setFtDraftQuestions(ft_questions); setFtEditMode(true); }}
                         style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>

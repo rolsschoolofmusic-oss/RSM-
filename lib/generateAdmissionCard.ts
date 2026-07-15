@@ -62,7 +62,8 @@ function hr(doc: jsPDF, y: number, M: number, W: number) {
 // ─── Main generator ───────────────────────────────────────────────────────────
 export async function generateAdmissionCardPDF(
   admission: Record<string, unknown>,
-  screening: Record<string, unknown> | null
+  screening: Record<string, unknown> | null,
+  extraFields?: { label: string; value: string }[],
 ) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = 210;
@@ -152,8 +153,13 @@ export async function generateAdmissionCardPDF(
   c1y = lv(doc, "Email:",   s(admission.email)  || "—", M,    c1y, 22);
   c1y = lv(doc, "Centre:",  s(admission.centre) || "—", M,    c1y, 22);
   let c2y = y;
-  c2y = lv(doc, "School / Company:", s(admission.schoolCompany) || "—", COL2, c2y, 34);
-  c2y = lv(doc, "Address:",          addr,                               COL2, c2y, 34);
+  const isWorking = s(admission.workingStatus) === "Working";
+  c2y = lv(doc, isWorking ? "Company:" : "School / College:", s(admission.schoolCompany) || "—", COL2, c2y, 34);
+  const gradeOrField = isWorking ? s(admission.fieldOfWork) : s(admission.gradeStandard);
+  if (gradeOrField) {
+    c2y = lv(doc, isWorking ? "Field of Work:" : "Grade / Standard:", gradeOrField, COL2, c2y, 34);
+  }
+  c2y = lv(doc, "Address:", addr, COL2, c2y, 34);
 
   y = Math.max(c1y, c2y) + GAP;
   hr(doc, y, M, W);
@@ -170,7 +176,13 @@ export async function generateAdmissionCardPDF(
   m2y = lv(doc, "Musical Skill Level:", s(admission.musicalSkill)   || "—",                 COL2, m2y, 34);
   m2y = lv(doc, "How Heard About Us:",  s(admission.howHeardAboutUs)|| "—",                 COL2, m2y, 34);
 
-  y = Math.max(m1y, m2y) + GAP;
+  let extraY = Math.max(m1y, m2y);
+  if (extraFields && extraFields.length > 0) {
+    for (const f of extraFields) {
+      extraY = lv(doc, `${f.label}:`, f.value || "—", M, extraY, 44);
+    }
+  }
+  y = extraY + GAP;
   hr(doc, y, M, W);
   y += GAP;
 

@@ -14,6 +14,35 @@ import { DiagnosticCard, TRACK_STYLE } from "@/components/DiagnosticCard";
 import { GuitarScreeningContent } from "./guitar/GuitarScreeningContent";
 import { KeyboardScreeningContent } from "./keyboard/KeyboardScreeningContent";
 import { DrumScreeningContent } from "./drums/DrumScreeningContent";
+import {
+  OptionGroup, MultiOptionGroup, ApplicationQuestionInput, ApplicationQuestionDisplay, ApplicationFormEditor,
+} from "./ApplicationQuestionFields";
+import {
+  getApplicationForm, defaultApplicationQuestions, formatAnswerForDisplay,
+  type ApplicationQuestion,
+} from "@/services/screening/applicationForm.service";
+
+const GRADE_STANDARD_OPTIONS = [
+  "Preschool",
+  "Primary (Grade 1-5)",
+  "Middle School (Grade 6-8)",
+  "High School (Grade 9-10)",
+  "Higher Secondary (Grade 11-12)",
+  "Undergraduate",
+  "Postgraduate",
+];
+
+const FIELD_OF_WORK_OPTIONS = [
+  "IT & Software Engineering",
+  "Architecture & Civil Engineering",
+  "Healthcare & Medical",
+  "Finance, Banking & Accounting",
+  "Education & Teaching",
+  "Marketing, Sales & Advertising",
+  "Design, Media & Arts",
+  "Business Management & Entrepreneurship",
+  "Other",
+];
 
 function calculateAge(dd: string, mm: string, yyyy: string): string {
   const d = parseInt(dd, 10), m = parseInt(mm, 10), y = parseInt(yyyy, 10);
@@ -272,17 +301,17 @@ function scoreColor(n: number): string {
 function EditAdmissionOverlay({
   record,
   centresList,
+  template,
   onSave,
   onCancel,
 }: {
   record:      Record<string, unknown>;
   centresList: { id: string; name: string }[];
+  template:    ApplicationQuestion[];
   onSave:      (updated: Record<string, unknown>) => Promise<void>;
   onCancel:    () => void;
 }) {
   function rs(v: unknown): string    { return typeof v === "string" ? v : ""; }
-  function ra(v: unknown): string[]  { return Array.isArray(v) ? v.map(String) : []; }
-  function rn(v: unknown): number | null { return typeof v === "number" ? v : null; }
 
   const dobParts = rs(record.dob).split("/");
 
@@ -294,20 +323,21 @@ function EditAdmissionOverlay({
   const age = calculateAge(dobDD, dobMM, dobYYYY);
   const [parentName,         setParentName]         = useState(rs(record.parentName));
   const [workingStatus,      setWorkingStatus]      = useState(rs(record.workingStatus));
+  const [schoolCollegeName,  setSchoolCollegeName]  = useState(rs(record.schoolCompany));
+  const [gradeStandard,      setGradeStandard]      = useState(rs(record.gradeStandard));
+  const [companyName,        setCompanyName]        = useState(rs(record.schoolCompany));
+  const [fieldOfWork,        setFieldOfWork]        = useState(rs(record.fieldOfWork));
   const [schoolCompany,      setSchoolCompany]      = useState(rs(record.schoolCompany));
   const [phone,              setPhone]              = useState(rs(record.phone));
   const [email,              setEmail]              = useState(rs(record.email));
   const [address1,           setAddress1]           = useState(rs(record.address1));
   const [address2,           setAddress2]           = useState(rs(record.address2));
   const [centre,             setCentre]             = useState(() => { const raw = rs(record.centre); const found = centresList.find(c => c.id === raw); return found ? found.name : raw; });
-  const [purposeOfLearning,  setPurposeOfLearning]  = useState(rs(record.purposeOfLearning));
-  const [instrumentsToLearn, setInstrumentsToLearn] = useState<string[]>(ra(record.instrumentsToLearn));
-  const [previousExperience, setPreviousExperience] = useState(rs(record.previousExperience));
-  const [instrumentsPlayed,  setInstrumentsPlayed]  = useState<string[]>(ra(record.instrumentsPlayed));
-  const [musicalSkill,       setMusicalSkill]       = useState(rs(record.musicalSkill));
-  const [howHeardAboutUs,    setHowHeardAboutUs]    = useState(rs(record.howHeardAboutUs));
-  const [initialExperience,  setInitialExperience]  = useState<number | null>(rn(record.initialExperience));
-  const [parentPartnerProgram, setParentPartnerProgram] = useState(rs(record.parentPartnerProgram));
+  const [answers,            setAnswers]            = useState<Record<string, unknown>>(() => {
+    const init: Record<string, unknown> = {};
+    for (const q of template) init[q.key] = record[q.key];
+    return init;
+  });
   const [photoDataUrl,       setPhotoDataUrl]       = useState<string | null>(rs(record.photo) || null);
 
   const fileInputRef   = useRef<HTMLInputElement>(null);
@@ -346,16 +376,21 @@ function EditAdmissionOverlay({
     if (!fullName.trim() || !phone.trim() || saving) return;
     setSaving(true); setSaveErr("");
     try {
+      const schoolCompanyValue =
+        workingStatus === "Student" ? schoolCollegeName.trim() :
+        workingStatus === "Working" ? companyName.trim() :
+        schoolCompany.trim();
       await onSave({
         admissionNumber: admissionNumber.trim(),
         fullName: fullName.trim(), age,
         dob: `${dobDD}/${dobMM}/${dobYYYY}`,
-        parentName: parentName.trim(), workingStatus, schoolCompany: schoolCompany.trim(),
+        parentName: parentName.trim(), workingStatus, schoolCompany: schoolCompanyValue,
+        gradeStandard: workingStatus === "Student" ? gradeStandard : "",
+        fieldOfWork:   workingStatus === "Working" ? fieldOfWork   : "",
         phone: phone.trim(), email: email.trim(),
         address1: address1.trim(), address2: address2.trim(), centre,
-        purposeOfLearning, instrumentsToLearn, previousExperience,
-        instrumentsPlayed, musicalSkill, howHeardAboutUs: howHeardAboutUs.trim(),
-        initialExperience, parentPartnerProgram, photo: photoDataUrl ?? null,
+        ...answers,
+        photo: photoDataUrl ?? null,
       });
     } catch (err) {
       setSaveErr(err instanceof Error ? err.message : "Failed to save.");
@@ -421,10 +456,42 @@ function EditAdmissionOverlay({
               <label style={s.label}>Working Status</label>
               <OptionGroup options={["Student","Working","Part Time","Not Working"]} value={workingStatus} onChange={setWorkingStatus} />
             </div>
-            <div>
-              <label style={s.label}>School / Company</label>
-              <input value={schoolCompany} onChange={e => setSchoolCompany(e.target.value)} style={s.input} />
-            </div>
+            {workingStatus === "Student" && (
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1.5 }}>
+                  <label style={s.label}>School / College Name</label>
+                  <input value={schoolCollegeName} onChange={e => setSchoolCollegeName(e.target.value)} style={s.input} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={s.label}>Grade / Standard</label>
+                  <select value={gradeStandard} onChange={e => setGradeStandard(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
+                    <option value="">— Select —</option>
+                    {GRADE_STANDARD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+            {workingStatus === "Working" && (
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1.5 }}>
+                  <label style={s.label}>Company Name</label>
+                  <input value={companyName} onChange={e => setCompanyName(e.target.value)} style={s.input} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={s.label}>Field of Work</label>
+                  <select value={fieldOfWork} onChange={e => setFieldOfWork(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
+                    <option value="">— Select —</option>
+                    {FIELD_OF_WORK_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+            {workingStatus !== "Student" && workingStatus !== "Working" && (
+              <div>
+                <label style={s.label}>School / Company</label>
+                <input value={schoolCompany} onChange={e => setSchoolCompany(e.target.value)} style={s.input} />
+              </div>
+            )}
           </div>
 
           {/* Contact */}
@@ -466,56 +533,10 @@ function EditAdmissionOverlay({
           {/* Musical */}
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>Musical Skills</div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>Purpose of Learning</label>
-              <OptionGroup options={["Formal Music Learning","Skill Development","Entertainment"]} value={purposeOfLearning} onChange={setPurposeOfLearning} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>Instruments to Learn</label>
-              <MultiOptionGroup options={["Piano","Keyboard","Guitar","Drums","Violin","Vocal"]} values={instrumentsToLearn} onChange={setInstrumentsToLearn} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>Previous Experience</label>
-              <OptionGroup options={["Well-Trained","Average","No Previous Experience"]} value={previousExperience} onChange={setPreviousExperience} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>Instruments Already Playing</label>
-              <MultiOptionGroup options={["Guitar","Drums","Keyboard","None of the Above"]} values={instrumentsPlayed} onChange={setInstrumentsPlayed} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>Musical Skill</label>
-              <OptionGroup options={["Excellent","Average","Poor"]} value={musicalSkill} onChange={setMusicalSkill} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>How Heard About Us</label>
-              <select value={howHeardAboutUs} onChange={e => setHowHeardAboutUs(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
-                <option value="">— Select —</option>
-                <option value="Google">Google</option>
-                <option value="Instagram">Instagram</option>
-                <option value="Family or Friends">Family or Friends</option>
-                <option value="Demo Class">Demo Class</option>
-              </select>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={s.label}>Initial Experience (/ 10)</label>
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const }}>
-                {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                  <button key={n} type="button"
-                    onClick={() => setInitialExperience(initialExperience === n ? null : n)}
-                    style={{ width: 38, height: 38, borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13,
-                      background: initialExperience === n ? "#8b3a4a" : "#f3f4f6",
-                      color:      initialExperience === n ? "#fff" : "#374151",
-                      fontWeight: initialExperience === n ? 800 : 500,
-                    }}>
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label style={s.label}>Parent Partner Program</label>
-              <OptionGroup options={["Yes","No","Want to Know More"]} value={parentPartnerProgram} onChange={setParentPartnerProgram} />
-            </div>
+            {template.map(q => (
+              <ApplicationQuestionInput key={q.id} question={q} value={answers[q.key]}
+                onChange={v => setAnswers(a => ({ ...a, [q.key]: v }))} />
+            ))}
           </div>
 
           {/* Photo */}
@@ -565,7 +586,11 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [centresList,  setCentresList]  = useState<{ id: string; name: string }[]>([]);
   const [showForm,     setShowForm]     = useState(false);
+  const [summaryFilter, setSummaryFilter] = useState<"all" | "screened" | "confirmed">("all");
   const [pdfLoading,   setPdfLoading]   = useState<string | null>(null);
+  const [template,     setTemplate]     = useState<ApplicationQuestion[]>(defaultApplicationQuestions());
+  const [showFormEditor, setShowFormEditor] = useState(false);
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
   // Screening lookup map: keyed by studentId and by lowercased studentName
   const [screeningMap, setScreeningMap] = useState<Map<string, Record<string, unknown>>>(new Map());
@@ -584,7 +609,19 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
 
   function str(v: unknown): string   { return typeof v === "string" ? v : ""; }
   function arr(v: unknown): string[] { return Array.isArray(v) ? v.map(String) : []; }
-  function num(v: unknown): number | null { return typeof v === "number" ? v : null; }
+
+  // Fields already rendered in the PDF's fixed "Musical Profile" block —
+  // anything else in the template is appended as extra rows.
+  const PDF_CORE_KEYS = new Set([
+    "instrumentsToLearn", "purposeOfLearning", "previousExperience",
+    "instrumentsPlayed", "musicalSkill", "howHeardAboutUs",
+  ]);
+  function extraPdfFields(admission: Record<string, unknown>): { label: string; value: string }[] {
+    return template
+      .filter(q => !PDF_CORE_KEYS.has(q.key))
+      .map(q => ({ label: q.label, value: formatAnswerForDisplay(q, admission[q.key]) }))
+      .filter(f => f.value !== "—");
+  }
 
   function reload() {
     setLoading(true);
@@ -601,6 +638,9 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
     reload();
     getDocs(collection(db, "centers"))
       .then(snap => setCentresList(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) ?? d.id }))))
+      .catch(() => {});
+    getApplicationForm()
+      .then(qs => { if (qs && qs.length > 0) setTemplate(qs); })
       .catch(() => {});
     // Build screening lookup map from all 3 instrument collections
     Promise.all(
@@ -652,7 +692,7 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
     const id = str(admission.id);
     setPdfLoading(id);
     try {
-      await generateAdmissionCardPDF(admission, getScreening(admission));
+      await generateAdmissionCardPDF(admission, getScreening(admission), extraPdfFields(admission));
     } catch (err) {
       console.error("PDF generation failed:", err);
     } finally {
@@ -669,7 +709,7 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
       await updateAdmission(id, { admissionNumber: completingAdmNo });
       setAdmissions(prev => prev.map(a => str(a.id) === id ? updated : a));
       setCompletingSaving("downloading");
-      await generateAdmissionCardPDF(updated, completing.screening);
+      await generateAdmissionCardPDF(updated, completing.screening, extraPdfFields(updated));
       // Advance to success phase — keep modal open for enroll option
       setCompleting({ ...completing, admission: updated });
       setCompletingPhase("success");
@@ -695,6 +735,8 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
         parentName:      str(adm.parentName),
         workingStatus:   str(adm.workingStatus),
         schoolCompany:   str(adm.schoolCompany),
+        gradeStandard:   str(adm.gradeStandard),
+        fieldOfWork:     str(adm.fieldOfWork),
         address1:        str(adm.address1),
         address2:        str(adm.address2),
         centre:          enrollCentre,
@@ -723,32 +765,47 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
   const totalScreened     = admissions.filter(rec => getScreening(rec) !== null).length;
   const totalConfirmed    = admissions.filter(rec => str(rec.admissionNumber).length > 0).length;
 
-  const summaryStats: Array<{ icon: string; label: string; value: number; color: string; bg: string }> = [
-    { icon: "📁", label: "Applications Received", value: totalApplications, color: "#4338ca", bg: "#eef2ff" },
-    { icon: "🎹", label: "Screening Done",         value: totalScreened,    color: "#0d9488", bg: "#f0fdfa" },
-    { icon: "🎓", label: "Admissions Confirmed",   value: totalConfirmed,   color: "#16a34a", bg: "#f0fdf4" },
+  const summaryStats: Array<{ icon: string; label: string; value: number; color: string; bg: string; filter: "all" | "screened" | "confirmed" }> = [
+    { icon: "📁", label: "Applications Received", value: totalApplications, color: "#4338ca", bg: "#eef2ff", filter: "all"       },
+    { icon: "🎹", label: "Screening Done",         value: totalScreened,    color: "#0d9488", bg: "#f0fdfa", filter: "screened"  },
+    { icon: "🎓", label: "Admissions Confirmed",   value: totalConfirmed,   color: "#16a34a", bg: "#f0fdf4", filter: "confirmed" },
   ];
+
+  const filteredAdmissions =
+    summaryFilter === "screened"  ? admissions.filter(rec => getScreening(rec) !== null) :
+    summaryFilter === "confirmed" ? admissions.filter(rec => str(rec.admissionNumber).length > 0) :
+    admissions;
 
   const summaryBar = (
     <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" as const }}>
-      {summaryStats.map(stat => (
-        <div key={stat.label} style={{
-          flex: "1 1 200px", display: "flex", alignItems: "center", gap: 14,
-          background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14,
-          padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, background: stat.bg,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0,
-          }}>
-            {stat.icon}
-          </div>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginTop: 2 }}>{stat.label}</div>
-          </div>
-        </div>
-      ))}
+      {summaryStats.map(stat => {
+        const active = summaryFilter === stat.filter;
+        return (
+          <button
+            key={stat.label}
+            onClick={() => setSummaryFilter(active ? "all" : stat.filter)}
+            title={active && stat.filter !== "all" ? "Click to clear filter" : `Show only: ${stat.label}`}
+            style={{
+              flex: "1 1 200px", display: "flex", alignItems: "center", gap: 14,
+              background: "#fff", border: active ? `2px solid ${stat.color}` : "1px solid #e5e7eb",
+              borderRadius: 14, padding: active ? "15px 17px" : "16px 18px",
+              boxShadow: active ? `0 4px 16px ${stat.color}33` : "0 1px 3px rgba(0,0,0,0.06)",
+              cursor: "pointer", fontFamily: "inherit", textAlign: "left" as const,
+            }}
+          >
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, background: stat.bg,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0,
+            }}>
+              {stat.icon}
+            </div>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginTop: 2 }}>{stat.label}</div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -768,13 +825,26 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
     return (
       <>
         {formModal}
+        {showFormEditor && (
+          <ApplicationFormEditor
+            onClose={() => setShowFormEditor(false)}
+            onSaved={(qs) => setTemplate(qs)}
+          />
+        )}
         <div style={{ textAlign: "center", padding: "60px 24px", color: "#9ca3af" }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#374151", marginBottom: 6 }}>No applications yet</div>
           <div style={{ fontSize: 13, marginBottom: 24 }}>Submitted forms will appear here.</div>
-          <button onClick={() => setShowForm(true)} style={s.primaryBtn}>
-            + New Admission
-          </button>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
+            <button onClick={() => setShowForm(true)} style={s.primaryBtn}>
+              + New Admission
+            </button>
+            {isAdmin && (
+              <button onClick={() => setShowFormEditor(true)} style={s.secondaryBtn}>
+                ⚙ Edit Application Form
+              </button>
+            )}
+          </div>
         </div>
       </>
     );
@@ -789,8 +859,16 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
         <EditAdmissionOverlay
           record={editing}
           centresList={centresList}
+          template={template}
           onSave={async (updated) => { await handleSaveEdit(str(editing.id), updated); }}
           onCancel={() => setEditing(null)}
+        />
+      )}
+
+      {showFormEditor && (
+        <ApplicationFormEditor
+          onClose={() => setShowFormEditor(false)}
+          onSaved={(qs) => setTemplate(qs)}
         />
       )}
 
@@ -1057,7 +1135,9 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
                   ["Phone",      str(selected.phone)],
                   ["Email",      str(selected.email)],
                   ["Status",     str(selected.workingStatus)],
-                  ["School/Co.", str(selected.schoolCompany)],
+                  [str(selected.workingStatus) === "Working" ? "Company" : "School/College", str(selected.schoolCompany)],
+                  ["Grade/Standard", str(selected.gradeStandard)],
+                  ["Field of Work",  str(selected.fieldOfWork)],
                   ["Centre",     centresList.find(c => c.id === str(selected.centre))?.name ?? str(selected.centre)],
                 ] as [string, string][]).filter(([, v]) => v).map(([k, v]) => (
                   <div key={k}>
@@ -1081,59 +1161,40 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
 
           {/* Musical info */}
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f3f4f6", display: "flex", flexDirection: "column" as const, gap: 10 }}>
-            {([
-              ["Purpose of Learning",    str(selected.purposeOfLearning)],
-              ["Previous Experience",    str(selected.previousExperience)],
-              ["Musical Skill",          str(selected.musicalSkill)],
-              ["How Heard About Us",     str(selected.howHeardAboutUs)],
-              ["Parent Partner Program", str(selected.parentPartnerProgram)],
-            ] as [string, string][]).filter(([, v]) => v).map(([k, v]) => (
-              <div key={k} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.06em", minWidth: 160, flexShrink: 0 }}>{k}</div>
-                <div style={{ fontSize: 13, color: "#374151" }}>{v}</div>
-              </div>
+            {template.map(q => (
+              <ApplicationQuestionDisplay key={q.id} question={q} value={selected[q.key]} />
             ))}
-            {arr(selected.instrumentsToLearn).length > 0 && (
-              <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.06em", minWidth: 160, flexShrink: 0 }}>Instruments to Learn</div>
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const }}>
-                  {arr(selected.instrumentsToLearn).map(i => (
-                    <span key={i} style={{ background: "#f0dde1", color: "#8b3a4a", fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 99 }}>{i}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {arr(selected.instrumentsPlayed).length > 0 && (
-              <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.06em", minWidth: 160, flexShrink: 0 }}>Instruments Played</div>
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const }}>
-                  {arr(selected.instrumentsPlayed).map(i => (
-                    <span key={i} style={{ background: "#dcfce7", color: "#15803d", fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 99 }}>{i}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {num(selected.initialExperience) !== null && (
-              <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.06em", minWidth: 160, flexShrink: 0 }}>Initial Experience</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#8b3a4a" }}>{num(selected.initialExperience)} <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>/ 10</span></div>
-              </div>
-            )}
           </div>
         </div>
       )}
 
       {/* ── Applications table ── */}
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>
-            Applications
-            <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 400, marginLeft: 8 }}>({admissions.length})</span>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" as const, gap: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", display: "flex", alignItems: "center", gap: 10 }}>
+            {summaryFilter === "all" ? "Applications" : summaryFilter === "screened" ? "Screened Applications" : "Confirmed Admissions"}
+            <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 400 }}>
+              ({filteredAdmissions.length}{summaryFilter !== "all" ? ` of ${admissions.length}` : ""})
+            </span>
+            {summaryFilter !== "all" && (
+              <button onClick={() => setSummaryFilter("all")}
+                style={{ border: "none", background: "#f3f4f6", borderRadius: 99, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
+                ✕ Clear filter
+              </button>
+            )}
           </div>
-          <button onClick={() => setShowForm(true)}
-            style={{ ...s.primaryBtn, padding: "8px 16px", fontSize: 12 }}>
-            + New Admission
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+            {isAdmin && (
+              <button onClick={() => setShowFormEditor(true)}
+                style={{ ...s.secondaryBtn, padding: "8px 16px", fontSize: 12 }}>
+                ⚙ Edit Application Form
+              </button>
+            )}
+            <button onClick={() => setShowForm(true)}
+              style={{ ...s.primaryBtn, padding: "8px 16px", fontSize: 12 }}>
+              + New Admission
+            </button>
+          </div>
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -1150,7 +1211,14 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
               </tr>
             </thead>
             <tbody>
-              {admissions.map((rec, i) => {
+              {filteredAdmissions.length === 0 && (
+                <tr>
+                  <td colSpan={9} style={{ padding: "28px 14px", textAlign: "center" as const, color: "#9ca3af", fontSize: 13 }}>
+                    No applications match this filter.
+                  </td>
+                </tr>
+              )}
+              {filteredAdmissions.map((rec, i) => {
                 const isSelected  = selected?.id === rec.id;
                 const instruments = arr(rec.instrumentsToLearn);
                 return (
@@ -1425,59 +1493,6 @@ function ScoreSelector({
 
 // ─── Admission form helpers ───────────────────────────────────────────────────
 
-function OptionGroup({ options, value, onChange }: {
-  options: string[];
-  value:   string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
-      {options.map(opt => {
-        const sel = value === opt;
-        return (
-          <button key={opt} type="button" onClick={() => onChange(sel ? "" : opt)} style={{
-            padding: "7px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-            border:     sel ? "2px solid #8b3a4a" : "1px solid #e5e7eb",
-            background: sel ? "#f0dde1" : "#f9fafb",
-            color:      sel ? "#8b3a4a" : "#374151",
-            fontWeight: sel ? 700 : 400,
-          }}>
-            {opt}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function MultiOptionGroup({ options, values, onChange }: {
-  options:  string[];
-  values:   string[];
-  onChange: (vals: string[]) => void;
-}) {
-  function toggle(opt: string) {
-    onChange(values.includes(opt) ? values.filter(v => v !== opt) : [...values, opt]);
-  }
-  return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
-      {options.map(opt => {
-        const sel = values.includes(opt);
-        return (
-          <button key={opt} type="button" onClick={() => toggle(opt)} style={{
-            padding: "7px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-            border:     sel ? "2px solid #8b3a4a" : "1px solid #e5e7eb",
-            background: sel ? "#f0dde1" : "#f9fafb",
-            color:      sel ? "#8b3a4a" : "#374151",
-            fontWeight: sel ? 700 : 400,
-          }}>
-            {sel ? "✓ " : ""}{opt}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Admission form content ───────────────────────────────────────────────────
 
 function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
@@ -1491,6 +1506,10 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
   const age = calculateAge(dobDD, dobMM, dobYYYY);
   const [parentName,    setParentName]    = useState("");
   const [workingStatus, setWorkingStatus] = useState("");
+  const [schoolCollegeName, setSchoolCollegeName] = useState("");
+  const [gradeStandard,     setGradeStandard]     = useState("");
+  const [companyName,       setCompanyName]       = useState("");
+  const [fieldOfWork,       setFieldOfWork]       = useState("");
   const [schoolCompany, setSchoolCompany] = useState("");
 
   // Contact information
@@ -1501,15 +1520,9 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
   const [centre,   setCentre]   = useState("");
   const [centres,  setCentres]  = useState<{ id: string; name: string }[]>([]);
 
-  // Musical skills
-  const [purposeOfLearning,   setPurposeOfLearning]   = useState("");
-  const [instrumentsToLearn,  setInstrumentsToLearn]  = useState<string[]>([]);
-  const [previousExperience,  setPreviousExperience]  = useState("");
-  const [instrumentsPlayed,   setInstrumentsPlayed]   = useState<string[]>([]);
-  const [musicalSkill,        setMusicalSkill]        = useState("");
-  const [howHeardAboutUs,     setHowHeardAboutUs]     = useState("");
-  const [initialExperience,   setInitialExperience]   = useState<number | null>(null);
-  const [parentPartnerProgram,setParentPartnerProgram]= useState("");
+  // Musical skills (admin-configurable template)
+  const [template, setTemplate] = useState<ApplicationQuestion[]>(defaultApplicationQuestions());
+  const [answers,  setAnswers]  = useState<Record<string, unknown>>({});
 
   // Photo
   const [photoDataUrl,  setPhotoDataUrl]  = useState<string | null>(null);
@@ -1524,6 +1537,9 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
   useEffect(() => {
     getDocs(collection(db, "centers"))
       .then(snap => setCentres(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) ?? d.id }))))
+      .catch(() => {});
+    getApplicationForm()
+      .then(qs => { if (qs && qs.length > 0) setTemplate(qs); })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1561,26 +1577,25 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
     if (!canSubmit || saving) return;
     setSaving(true); setSaveErr("");
     try {
+      const schoolCompanyValue =
+        workingStatus === "Student" ? schoolCollegeName.trim() :
+        workingStatus === "Working" ? companyName.trim() :
+        schoolCompany.trim();
       await saveAdmission({
         fullName:            fullName.trim(),
         age,
         dob:                 `${dobDD}/${dobMM}/${dobYYYY}`,
         parentName:          parentName.trim(),
         workingStatus,
-        schoolCompany:       schoolCompany.trim(),
+        schoolCompany:       schoolCompanyValue,
+        gradeStandard:       workingStatus === "Student" ? gradeStandard : "",
+        fieldOfWork:         workingStatus === "Working" ? fieldOfWork   : "",
         phone:               phone.trim(),
         email:               email.trim(),
         address1:            address1.trim(),
         address2:            address2.trim(),
         centre,
-        purposeOfLearning,
-        instrumentsToLearn,
-        previousExperience,
-        instrumentsPlayed,
-        musicalSkill,
-        howHeardAboutUs:     howHeardAboutUs.trim(),
-        initialExperience,
-        parentPartnerProgram,
+        ...answers,
         photo:               photoDataUrl ?? null,
         submittedBy:         user?.uid ?? "",
       });
@@ -1594,11 +1609,10 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
 
   function reset() {
     setFullName(""); setDobDD(""); setDobMM(""); setDobYYYY("");
-    setParentName(""); setWorkingStatus(""); setSchoolCompany("");
+    setParentName(""); setWorkingStatus("");
+    setSchoolCollegeName(""); setGradeStandard(""); setCompanyName(""); setFieldOfWork(""); setSchoolCompany("");
     setPhone(""); setEmail(""); setAddress1(""); setAddress2(""); setCentre("");
-    setPurposeOfLearning(""); setInstrumentsToLearn([]); setPreviousExperience("");
-    setInstrumentsPlayed([]); setMusicalSkill(""); setHowHeardAboutUs("");
-    setInitialExperience(null); setParentPartnerProgram("");
+    setAnswers({});
     setPhotoDataUrl(null);
     setSaved(false); setSaveErr("");
   }
@@ -1674,10 +1688,42 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
           />
         </div>
 
-        <div>
-          <label style={s.label}>Name of School / Company</label>
-          <input value={schoolCompany} onChange={e => setSchoolCompany(e.target.value)} placeholder="School or company name" style={s.input} />
-        </div>
+        {workingStatus === "Student" && (
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1.5 }}>
+              <label style={s.label}>School / College Name</label>
+              <input value={schoolCollegeName} onChange={e => setSchoolCollegeName(e.target.value)} placeholder="School or college name" style={s.input} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={s.label}>Grade / Standard</label>
+              <select value={gradeStandard} onChange={e => setGradeStandard(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
+                <option value="">— Select —</option>
+                {GRADE_STANDARD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        {workingStatus === "Working" && (
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1.5 }}>
+              <label style={s.label}>Company Name</label>
+              <input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Company name" style={s.input} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={s.label}>Field of Work</label>
+              <select value={fieldOfWork} onChange={e => setFieldOfWork(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
+                <option value="">— Select —</option>
+                {FIELD_OF_WORK_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        {workingStatus !== "Student" && workingStatus !== "Working" && (
+          <div>
+            <label style={s.label}>Name of School / Company</label>
+            <input value={schoolCompany} onChange={e => setSchoolCompany(e.target.value)} placeholder="School or company name" style={s.input} />
+          </div>
+        )}
       </div>
 
       {/* ── Contact Information ──────────────────────────────────────────────── */}
@@ -1722,105 +1768,10 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
       {/* ── Musical Skills ───────────────────────────────────────────────────── */}
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={s.sectionTitle}>Information on Musical Skills</div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>Purpose of Learning</label>
-          <OptionGroup
-            options={["Formal Music Learning", "Skill Development", "Entertainment"]}
-            value={purposeOfLearning}
-            onChange={setPurposeOfLearning}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>
-            Musical Instrument to Learn{" "}
-            <span style={{ color: "#9ca3af", fontWeight: 400, fontSize: 12 }}>(select all that apply)</span>
-          </label>
-          <MultiOptionGroup
-            options={["Piano", "Keyboard", "Guitar", "Drums", "Violin", "Vocal"]}
-            values={instrumentsToLearn}
-            onChange={setInstrumentsToLearn}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>Previous Experience in Music</label>
-          <OptionGroup
-            options={["Well-Trained", "Average", "No Previous Experience"]}
-            value={previousExperience}
-            onChange={setPreviousExperience}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>
-            Instruments You Already Play{" "}
-            <span style={{ color: "#9ca3af", fontWeight: 400, fontSize: 12 }}>(select all that apply)</span>
-          </label>
-          <MultiOptionGroup
-            options={["Guitar", "Drums", "Keyboard", "None of the Above"]}
-            values={instrumentsPlayed}
-            onChange={setInstrumentsPlayed}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>Explain Your Musical Skill</label>
-          <OptionGroup
-            options={["Excellent", "Average", "Poor"]}
-            value={musicalSkill}
-            onChange={setMusicalSkill}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>How Do You Know About ROL&apos;s School Of Music?</label>
-          <select value={howHeardAboutUs} onChange={e => setHowHeardAboutUs(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
-            <option value="">— Select —</option>
-            <option value="Google">Google</option>
-            <option value="Instagram">Instagram</option>
-            <option value="Family or Friends">Family or Friends</option>
-            <option value="Demo Class">Demo Class</option>
-          </select>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>
-            How Do You Describe Your Initial Experience With Us?{" "}
-            <span style={{ color: "#9ca3af", fontWeight: 400 }}>( / 10)</span>
-          </label>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
-            {[1,2,3,4,5,6,7,8,9,10].map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setInitialExperience(initialExperience === n ? null : n)}
-                style={{
-                  width: 42, height: 42, borderRadius: 8, cursor: "pointer", fontSize: 14,
-                  border:     "none",
-                  background: initialExperience === n ? "#8b3a4a" : "#f3f4f6",
-                  color:      initialExperience === n ? "#fff" : "#374151",
-                  fontWeight: initialExperience === n ? 800 : 500,
-                }}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          {initialExperience !== null && (
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>Selected: {initialExperience} / 10</div>
-          )}
-        </div>
-
-        <div>
-          <label style={s.label}>Would You Like to Participate in Our Parent Partner Program?</label>
-          <OptionGroup
-            options={["Yes", "No", "Want to Know More"]}
-            value={parentPartnerProgram}
-            onChange={setParentPartnerProgram}
-          />
-        </div>
+        {template.map(q => (
+          <ApplicationQuestionInput key={q.id} question={q} value={answers[q.key]}
+            onChange={v => setAnswers(a => ({ ...a, [q.key]: v }))} />
+        ))}
       </div>
 
       {/* ── Candidate Photo ──────────────────────────────────────────────────── */}
