@@ -8,6 +8,11 @@ import {
 import { db } from "@/services/firebase/firebase";
 import Link from "next/link";
 import { useAuthContext } from "@/features/auth/AuthContext";
+import { ROLES } from "@/config/constants";
+import {
+  getQuestionBank, saveQuestionBank, genQuestionId,
+  type FastTrackQuestion,
+} from "@/services/screening/questionBank.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type KbStream = "little-mozarts" | "fast-track" | "joyful-track" | "creative-track";
@@ -92,40 +97,39 @@ const SENSORY_TESTS = [
   },
 ] as const;
 
-const KEYBOARD_TESTS = [
+const KEYBOARD_TESTS: FastTrackQuestion[] = [
   {
-    code: "KB-01", title: "5-Finger Dexterity Run",
+    id: "kb-01", code: "KB-01", title: "5-Finger Dexterity Run",
     sub: "C-major 5-finger position · Ascending 1→5 and descending 5→1 · Both hands",
     rubric: [
-      { grade: "High"   as Grade, desc: "Clean, rapid, fully independent isolation. No idle-hand mirroring or stiffness." },
-      { grade: "Medium" as Grade, desc: "Minor hesitation at fingers 4–5. Slight mirroring that self-corrects." },
-      { grade: "Low"    as Grade, desc: "Persistent stiffness or fingers 4–5 moving as a pair." },
+      { grade: "High",   desc: "Clean, rapid, fully independent isolation. No idle-hand mirroring or stiffness.", marks: GRADE_SCORE.High },
+      { grade: "Medium", desc: "Minor hesitation at fingers 4–5. Slight mirroring that self-corrects.",           marks: GRADE_SCORE.Medium },
+      { grade: "Low",    desc: "Persistent stiffness or fingers 4–5 moving as a pair.",                           marks: GRADE_SCORE.Low },
     ],
   },
   {
-    code: "KB-02", title: "Hand Independence Check",
+    id: "kb-02", code: "KB-02", title: "Hand Independence Check",
     sub: "RH melody (C–E–G) while LH holds a whole note — then swap roles",
     rubric: [
-      { grade: "High"   as Grade, desc: "Both hands operate independently. No tension bleed between hands." },
-      { grade: "Medium" as Grade, desc: "Slight rhythmic pull between hands but overall independence maintained." },
-      { grade: "Low"    as Grade, desc: "One hand stops or rushes when the other plays. Hands cannot operate separately." },
+      { grade: "High",   desc: "Both hands operate independently. No tension bleed between hands.",               marks: GRADE_SCORE.High },
+      { grade: "Medium", desc: "Slight rhythmic pull between hands but overall independence maintained.",         marks: GRADE_SCORE.Medium },
+      { grade: "Low",    desc: "One hand stops or rushes when the other plays. Hands cannot operate separately.", marks: GRADE_SCORE.Low },
     ],
   },
   {
-    code: "KB-03", title: "Pitch & Interval Echo",
+    id: "kb-03", code: "KB-03", title: "Pitch & Interval Echo",
     sub: "3-note melodic phrase · Sing or hum back from memory · No replays",
     rubric: [
-      { grade: "High"   as Grade, desc: "Reproduces all 3 rounds accurately within 2 seconds. Correct pitch and contour." },
-      { grade: "Medium" as Grade, desc: "Accurate on rounds 1–2 but drifts in round 3. Contour correct, one pitch off." },
-      { grade: "Low"    as Grade, desc: "Cannot accurately reproduce the first phrase. Approximates range only." },
+      { grade: "High",   desc: "Reproduces all 3 rounds accurately within 2 seconds. Correct pitch and contour.", marks: GRADE_SCORE.High },
+      { grade: "Medium", desc: "Accurate on rounds 1–2 but drifts in round 3. Contour correct, one pitch off.",    marks: GRADE_SCORE.Medium },
+      { grade: "Low",    desc: "Cannot accurately reproduce the first phrase. Approximates range only.",          marks: GRADE_SCORE.Low },
     ],
   },
-] as const;
+];
 
 // ─── Config computations ──────────────────────────────────────────────────────
-function computeFtConfig(r: Grade, d: Grade, p: Grade): KeyboardConfig {
-  const all = [r, d, p];
-  if (all.every(g => g === "High")) return {
+function computeFtConfig(all: Grade[]): KeyboardConfig {
+  if (all.length > 0 && all.every(g => g === "High")) return {
     track: "Zeta Slab", syllabusStrategy: "Advanced Performance Track — Exam & Stage Ready",
     metronome: true, metronomeBpm: 80, handIntegration: "Hands Together",
     chords: "Full Harmonies & Inversions", keyboardType: "Digital Piano", songsheetDifficulty: "Advanced/16-Bar",
@@ -193,11 +197,60 @@ const labelStyle: React.CSSProperties = {
 const grid12: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 14 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-function GradeCard({ code, title, sub, rubric, value, onChange, accent }: {
-  code: string; title: string; sub: string;
-  rubric: readonly { grade: Grade; desc: string }[];
+function GradeCard({ question, value, onChange, accent, editable, onQuestionChange, onRemove, canRemove }: {
+  question: FastTrackQuestion;
   value: Grade | null; onChange: (g: Grade) => void; accent: string;
+  editable?: boolean;
+  onQuestionChange?: (q: FastTrackQuestion) => void;
+  onRemove?: () => void;
+  canRemove?: boolean;
 }) {
+  const { code, title, sub, rubric } = question;
+
+  if (editable) {
+    const setRubricField = (i: number, field: "desc" | "marks", val: string) => {
+      const nextRubric = rubric.map((r, ii) => ii === i
+        ? { ...r, [field]: field === "marks" ? (Number(val) || 0) : val }
+        : r) as FastTrackQuestion["rubric"];
+      onQuestionChange?.({ ...question, rubric: nextRubric });
+    };
+    return (
+      <div style={{ ...card, gridColumn: "span 4", border: `1.5px dashed ${accent}55` }}>
+        <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          <input value={code} onChange={e => onQuestionChange?.({ ...question, code: e.target.value })}
+            placeholder="Code" style={{ ...inputStyle, fontSize: 11, fontWeight: 800, padding: "5px 9px", width: 90 }} />
+          <input value={title} onChange={e => onQuestionChange?.({ ...question, title: e.target.value })}
+            placeholder="Question title" style={{ ...inputStyle, fontWeight: 700, fontSize: 13 }} />
+          <textarea value={sub} onChange={e => onQuestionChange?.({ ...question, sub: e.target.value })}
+            placeholder="Instructions / setup" rows={2} style={{ ...inputStyle, resize: "vertical", fontSize: 12, lineHeight: 1.5 }} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {rubric.map((r, i) => (
+            <div key={r.grade} style={{ border: "1.5px solid #f0f0f0", borderRadius: 10, padding: "8px 10px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>{r.grade}</span>
+                <input type="number" value={r.marks} min={0}
+                  onChange={e => setRubricField(i, "marks", e.target.value)}
+                  style={{ width: 50, padding: "3px 6px", fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, textAlign: "center", fontFamily: "inherit" }} />
+              </div>
+              <textarea value={r.desc} rows={2}
+                onChange={e => setRubricField(i, "desc", e.target.value)}
+                style={{ ...inputStyle, fontSize: 11, resize: "vertical", padding: "6px 8px", lineHeight: 1.4 }} />
+            </div>
+          ))}
+        </div>
+        {onRemove && (
+          <button type="button" onClick={onRemove} disabled={!canRemove}
+            style={{ marginTop: 10, width: "100%", padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca",
+              background: canRemove ? "#fef2f2" : "#f9fafb", color: canRemove ? "#dc2626" : "#d1d5db",
+              fontSize: 11, fontWeight: 700, cursor: canRemove ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+            🗑 Remove Question
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ ...card, gridColumn: "span 4" }}>
       <div style={{ marginBottom: 14 }}>
@@ -335,9 +388,11 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
   const [ft_performanceGoal,  setFtGoal]    = useState("");
   const [ft_kbLevel,          setFtLevel]   = useState("");
   const [ft_sightReading,     setFtSight]   = useState("");
-  const [ft_rhythmGrade,      setFtRhythm]  = useState<Grade | null>(null);
-  const [ft_dexterityGrade,   setFtDex]     = useState<Grade | null>(null);
-  const [ft_pitchGrade,       setFtPitch]   = useState<Grade | null>(null);
+  const [ft_questions,   setFtQuestions]   = useState<FastTrackQuestion[]>(KEYBOARD_TESTS);
+  const [ftGradeMap,     setFtGradeMap]    = useState<Record<string, Grade | null>>({});
+  const [ftEditMode,     setFtEditMode]    = useState(false);
+  const [ftDraftQuestions, setFtDraftQuestions] = useState<FastTrackQuestion[]>(KEYBOARD_TESTS);
+  const [ftBankSaving,   setFtBankSaving]  = useState(false);
 
   // ── JT state ──────────────────────────────────────────────────────────────
   const [jt_genres,          setJtGenres]     = useState<string[]>([]);
@@ -367,7 +422,7 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
     setLmDevFocus(""); setLmHandSize(""); setLmAttention(""); setLmInteraction("");
     setLmTactile(null); setLmRhythm(null); setLmKeyReach(null);
     setFtPrior([]); setFtGoal(""); setFtLevel(""); setFtSight("");
-    setFtRhythm(null); setFtDex(null); setFtPitch(null);
+    setFtGradeMap({});
     setJtGenres([]); setJtMotivation(""); setJtPractice(""); setJtPhysical("");
     setJtPosture(null); setJtFlex(null); setJtVisual(null);
     setCtTriggers(""); setCtSound(""); setCtVisual("");
@@ -376,6 +431,13 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
   }, []);
 
   useEffect(() => { resetAll(stream); }, [stream, resetAll]);
+
+  // ── Load Fast Track question bank (falls back to defaults if unsaved) ───────
+  useEffect(() => {
+    getQuestionBank("keyboard").then(qs => {
+      if (qs && qs.length > 0) { setFtQuestions(qs); setFtDraftQuestions(qs); }
+    }).catch(() => {});
+  }, []);
 
   // ── Student search ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -412,10 +474,14 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
   };
 
   // ── Config derivation ──────────────────────────────────────────────────────
+  const ftAnsweredGrades: Grade[] = ft_questions
+    .map(q => ftGradeMap[q.id])
+    .filter((g): g is Grade => g != null);
+  const ftAllAnswered = ft_questions.length > 0 && ftAnsweredGrades.length === ft_questions.length;
+
   const derivedConfig: KeyboardConfig | null = (() => {
     if (stream === "little-mozarts") return lmConfig();
-    if (stream === "fast-track" && ft_rhythmGrade && ft_dexterityGrade && ft_pitchGrade)
-      return computeFtConfig(ft_rhythmGrade, ft_dexterityGrade, ft_pitchGrade);
+    if (stream === "fast-track" && ftAllAnswered) return computeFtConfig(ftAnsweredGrades);
     if (stream === "joyful-track") return computeJtConfig(jt_posture, jt_handFlexibility);
     if (stream === "creative-track") return ctConfig(ct_metronomeEnabled, ct_metronomeBpm, ct_handIntegration);
     return null;
@@ -440,12 +506,19 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
         lm_rhythmScore:   lm_rhythm   ? GRADE_SCORE[lm_rhythm]     : null,
         lm_keyReachScore: lm_keyReach ? GRADE_SCORE[lm_keyReach]   : null,
       });
-      if (stream === "fast-track") Object.assign(payload, {
-        ft_priorInstruments, ft_performanceGoal, ft_kbLevel, ft_sightReading,
-        ft_rhythmGrade, ft_dexterityGrade, ft_pitchGrade,
-        ft_totalScore: [ft_rhythmGrade, ft_dexterityGrade, ft_pitchGrade]
-          .filter(Boolean).reduce((a, g) => a + GRADE_SCORE[g!], 0),
-      });
+      if (stream === "fast-track") {
+        const gradeAnswers = ft_questions.map(q => {
+          const g   = ftGradeMap[q.id] ?? null;
+          const rub = g ? q.rubric.find(r => r.grade === g) : undefined;
+          return { questionId: q.id, code: q.code, title: q.title, grade: g, marks: rub?.marks ?? 0 };
+        });
+        Object.assign(payload, {
+          ft_priorInstruments, ft_performanceGoal, ft_kbLevel, ft_sightReading,
+          ft_gradeAnswers: gradeAnswers,
+          ft_totalScore: gradeAnswers.reduce((a, g) => a + g.marks, 0),
+          ft_maxScore: ft_questions.reduce((a, q) => a + Math.max(...q.rubric.map(r => r.marks)), 0),
+        });
+      }
       if (stream === "joyful-track") Object.assign(payload, {
         jt_genres, jt_motivation, jt_practiceTime, jt_physicalNotes,
         jt_posture, jt_handFlexibility, jt_visualMemory,
@@ -461,6 +534,51 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
       setSaveErr(e instanceof Error ? e.message : "Save failed");
     } finally { setSaving(false); }
   };
+
+  // ── Fast Track question bank editing (admin only) ───────────────────────────
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
+
+  function addFtQuestion() {
+    const n = ftDraftQuestions.length + 1;
+    const newQ: FastTrackQuestion = {
+      id: genQuestionId("kb"),
+      code: `KB-${String(n).padStart(2, "0")}`,
+      title: "New Question", sub: "",
+      rubric: [
+        { grade: "High",   desc: "", marks: GRADE_SCORE.High },
+        { grade: "Medium", desc: "", marks: GRADE_SCORE.Medium },
+        { grade: "Low",    desc: "", marks: GRADE_SCORE.Low },
+      ],
+    };
+    setFtDraftQuestions(qs => [...qs, newQ]);
+  }
+
+  function removeFtQuestion(id: string) {
+    setFtDraftQuestions(qs => qs.length > 1 ? qs.filter(q => q.id !== id) : qs);
+  }
+
+  function updateFtDraftQuestion(id: string, updated: FastTrackQuestion) {
+    setFtDraftQuestions(qs => qs.map(q => q.id === id ? updated : q));
+  }
+
+  function cancelFtEdit() {
+    setFtDraftQuestions(ft_questions);
+    setFtEditMode(false);
+  }
+
+  async function saveFtQuestions() {
+    setFtBankSaving(true);
+    try {
+      await saveQuestionBank("keyboard", ftDraftQuestions, user?.uid ?? "unknown");
+      setFtQuestions(ftDraftQuestions);
+      setFtGradeMap({});
+      setFtEditMode(false);
+    } catch (e) {
+      console.error("Failed to save keyboard question bank:", e);
+    } finally {
+      setFtBankSaving(false);
+    }
+  }
 
   const sc = STREAM_CFG[stream];
   const ACCENT = sc.accent;
@@ -975,21 +1093,45 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* FAST TRACK */}
             {stream === "fast-track" && (
               <div style={grid12} className="scr-grid">
-                {KEYBOARD_TESTS.map((t, i) => (
-                  <GradeCard key={t.code} code={t.code} title={t.title} sub={t.sub}
-                    rubric={t.rubric} accent={ACCENT}
-                    value={i === 0 ? ft_rhythmGrade : i === 1 ? ft_dexterityGrade : ft_pitchGrade}
-                    onChange={g => {
-                      if (i === 0) setFtRhythm(g);
-                      else if (i === 1) setFtDex(g);
-                      else setFtPitch(g);
-                    }} />
-                ))}
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                    {!ftEditMode ? (
+                      <button type="button" onClick={() => { setFtDraftQuestions(ft_questions); setFtEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={addFtQuestion} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={cancelFtEdit} disabled={ftBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" onClick={saveFtQuestions} disabled={ftBankSaving}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: ftBankSaving ? 0.6 : 1 }}>
+                          {ftBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
-                {ft_rhythmGrade && ft_dexterityGrade && ft_pitchGrade && (() => {
-                  const cfg = computeFtConfig(ft_rhythmGrade, ft_dexterityGrade, ft_pitchGrade);
+                {ftEditMode
+                  ? ftDraftQuestions.map(q => (
+                      <GradeCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => updateFtDraftQuestion(q.id, updated)}
+                        onRemove={() => removeFtQuestion(q.id)} canRemove={ftDraftQuestions.length > 1} />
+                    ))
+                  : ft_questions.map(q => (
+                      <GradeCard key={q.id} question={q} accent={ACCENT}
+                        value={ftGradeMap[q.id] ?? null}
+                        onChange={g => setFtGradeMap(prev => ({ ...prev, [q.id]: g }))} />
+                    ))}
+
+                {!ftEditMode && ftAllAnswered && (() => {
+                  const cfg = computeFtConfig(ftAnsweredGrades);
                   const sc2 = SLAB_CFG[cfg.track];
-                  const total = GRADE_SCORE[ft_rhythmGrade] + GRADE_SCORE[ft_dexterityGrade] + GRADE_SCORE[ft_pitchGrade];
+                  const total = ft_questions.reduce((a, q) => {
+                    const g = ftGradeMap[q.id];
+                    const rub = g ? q.rubric.find(r => r.grade === g) : undefined;
+                    return a + (rub?.marks ?? 0);
+                  }, 0);
+                  const maxTotal = ft_questions.reduce((a, q) => a + Math.max(...q.rubric.map(r => r.marks)), 0);
                   return (
                     <>
                       <div style={{ ...card, gridColumn: "span 12",
@@ -1002,7 +1144,7 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
                           </div>
                           <div style={{ background: sc2.border, color: "#fff",
                             padding: "6px 16px", borderRadius: 10, fontSize: 14, fontWeight: 800 }}>
-                            {total}/15
+                            {total}/{maxTotal}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
@@ -1025,9 +1167,11 @@ export function KeyboardScreeningContent({ onBack }: { onBack?: () => void }) {
                   );
                 })()}
 
-                <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
-                  <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
-                </div>
+                {!ftEditMode && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
+                    <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
+                  </div>
+                )}
               </div>
             )}
 

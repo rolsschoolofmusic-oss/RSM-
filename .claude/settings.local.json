@@ -76,7 +76,14 @@
       "Bash(git ls-remote *)",
       "Bash(echo \"exit code: $?\")",
       "Bash(git branch *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(git rm *)",
+      "Bash(git commit *)",
+      "Bash(git remote *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Bash(nohup npm run dev)",
+      "Bash(disown)",
+      "Bash(vercel project *)"
     ]
   }
 }

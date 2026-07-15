@@ -15,6 +15,18 @@ import { GuitarScreeningContent } from "./guitar/GuitarScreeningContent";
 import { KeyboardScreeningContent } from "./keyboard/KeyboardScreeningContent";
 import { DrumScreeningContent } from "./drums/DrumScreeningContent";
 
+function calculateAge(dd: string, mm: string, yyyy: string): string {
+  const d = parseInt(dd, 10), m = parseInt(mm, 10), y = parseInt(yyyy, 10);
+  if (!d || !m || !y) return "";
+  const dob = new Date(y, m - 1, d);
+  if (isNaN(dob.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - y;
+  const hadBirthdayThisYear = today.getMonth() > m - 1 || (today.getMonth() === m - 1 && today.getDate() >= d);
+  if (!hadBirthdayThisYear) age--;
+  return age >= 0 ? String(age) : "";
+}
+
 // ─── Track definitions ────────────────────────────────────────────────────────
 
 interface TrackInterviewQuestion {
@@ -276,10 +288,10 @@ function EditAdmissionOverlay({
 
   const [admissionNumber,    setAdmissionNumber]    = useState(rs(record.admissionNumber));
   const [fullName,           setFullName]           = useState(rs(record.fullName));
-  const [age,                setAge]                = useState(rs(record.age));
   const [dobDD,              setDobDD]              = useState(dobParts[0] ?? "");
   const [dobMM,              setDobMM]              = useState(dobParts[1] ?? "");
   const [dobYYYY,            setDobYYYY]            = useState(dobParts[2] ?? "");
+  const age = calculateAge(dobDD, dobMM, dobYYYY);
   const [parentName,         setParentName]         = useState(rs(record.parentName));
   const [workingStatus,      setWorkingStatus]      = useState(rs(record.workingStatus));
   const [schoolCompany,      setSchoolCompany]      = useState(rs(record.schoolCompany));
@@ -336,7 +348,7 @@ function EditAdmissionOverlay({
     try {
       await onSave({
         admissionNumber: admissionNumber.trim(),
-        fullName: fullName.trim(), age: age.trim(),
+        fullName: fullName.trim(), age,
         dob: `${dobDD}/${dobMM}/${dobYYYY}`,
         parentName: parentName.trim(), workingStatus, schoolCompany: schoolCompany.trim(),
         phone: phone.trim(), email: email.trim(),
@@ -386,7 +398,7 @@ function EditAdmissionOverlay({
               </div>
               <div style={{ flex: 1 }}>
                 <label style={s.label}>Age</label>
-                <input value={age} onChange={e => setAge(e.target.value)} type="number" min={0} style={s.input} />
+                <input value={age ? `${age} yrs` : "—"} readOnly disabled style={{ ...s.input, background: "#f3f4f6", color: "#6b7280", cursor: "not-allowed" }} />
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -476,7 +488,13 @@ function EditAdmissionOverlay({
             </div>
             <div style={{ marginBottom: 12 }}>
               <label style={s.label}>How Heard About Us</label>
-              <input value={howHeardAboutUs} onChange={e => setHowHeardAboutUs(e.target.value)} style={s.input} />
+              <select value={howHeardAboutUs} onChange={e => setHowHeardAboutUs(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
+                <option value="">— Select —</option>
+                <option value="Google">Google</option>
+                <option value="Instagram">Instagram</option>
+                <option value="Family or Friends">Family or Friends</option>
+                <option value="Demo Class">Demo Class</option>
+              </select>
             </div>
             <div style={{ marginBottom: 12 }}>
               <label style={s.label}>Initial Experience (/ 10)</label>
@@ -701,6 +719,39 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
     return <div style={{ textAlign: "center", padding: "40px 0", color: "#9ca3af", fontSize: 13 }}>Loading…</div>;
   }
 
+  const totalApplications = admissions.length;
+  const totalScreened     = admissions.filter(rec => getScreening(rec) !== null).length;
+  const totalConfirmed    = admissions.filter(rec => str(rec.admissionNumber).length > 0).length;
+
+  const summaryStats: Array<{ icon: string; label: string; value: number; color: string; bg: string }> = [
+    { icon: "📁", label: "Applications Received", value: totalApplications, color: "#4338ca", bg: "#eef2ff" },
+    { icon: "🎹", label: "Screening Done",         value: totalScreened,    color: "#0d9488", bg: "#f0fdfa" },
+    { icon: "🎓", label: "Admissions Confirmed",   value: totalConfirmed,   color: "#16a34a", bg: "#f0fdf4" },
+  ];
+
+  const summaryBar = (
+    <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" as const }}>
+      {summaryStats.map(stat => (
+        <div key={stat.label} style={{
+          flex: "1 1 200px", display: "flex", alignItems: "center", gap: 14,
+          background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14,
+          padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12, background: stat.bg,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0,
+          }}>
+            {stat.icon}
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginTop: 2 }}>{stat.label}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   const formModal = showForm ? (
     <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.55)", overflowY: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16px" }}>
       <div style={{ width: "100%", maxWidth: 640, borderRadius: 16, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.25)", background: "#fff", margin: "20px 0" }}>
@@ -732,6 +783,7 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
   return (
     <div>
       {formModal}
+      {summaryBar}
       {/* Edit overlay */}
       {editing && (
         <EditAdmissionOverlay
@@ -1433,10 +1485,10 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
 
   // Personal information
   const [fullName,      setFullName]      = useState("");
-  const [age,           setAge]           = useState("");
   const [dobDD,         setDobDD]         = useState("");
   const [dobMM,         setDobMM]         = useState("");
   const [dobYYYY,       setDobYYYY]       = useState("");
+  const age = calculateAge(dobDD, dobMM, dobYYYY);
   const [parentName,    setParentName]    = useState("");
   const [workingStatus, setWorkingStatus] = useState("");
   const [schoolCompany, setSchoolCompany] = useState("");
@@ -1511,7 +1563,7 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
     try {
       await saveAdmission({
         fullName:            fullName.trim(),
-        age:                 age.trim(),
+        age,
         dob:                 `${dobDD}/${dobMM}/${dobYYYY}`,
         parentName:          parentName.trim(),
         workingStatus,
@@ -1541,7 +1593,7 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
   }
 
   function reset() {
-    setFullName(""); setAge(""); setDobDD(""); setDobMM(""); setDobYYYY("");
+    setFullName(""); setDobDD(""); setDobMM(""); setDobYYYY("");
     setParentName(""); setWorkingStatus(""); setSchoolCompany("");
     setPhone(""); setEmail(""); setAddress1(""); setAddress2(""); setCentre("");
     setPurposeOfLearning(""); setInstrumentsToLearn([]); setPreviousExperience("");
@@ -1589,7 +1641,7 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
           </div>
           <div style={{ flex: 1 }}>
             <label style={s.label}>Age</label>
-            <input value={age} onChange={e => setAge(e.target.value)} placeholder="—" style={s.input} type="number" min={0} />
+            <input value={age ? `${age} yrs` : "—"} readOnly disabled style={{ ...s.input, background: "#f3f4f6", color: "#6b7280", cursor: "not-allowed" }} />
           </div>
         </div>
 
@@ -1724,8 +1776,13 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
 
         <div style={{ marginBottom: 20 }}>
           <label style={s.label}>How Do You Know About ROL&apos;s School Of Music?</label>
-          <input value={howHeardAboutUs} onChange={e => setHowHeardAboutUs(e.target.value)}
-            placeholder="e.g. Social media, friend referral, walk-in…" style={s.input} />
+          <select value={howHeardAboutUs} onChange={e => setHowHeardAboutUs(e.target.value)} style={{ ...s.input, cursor: "pointer" }}>
+            <option value="">— Select —</option>
+            <option value="Google">Google</option>
+            <option value="Instagram">Instagram</option>
+            <option value="Family or Friends">Family or Friends</option>
+            <option value="Demo Class">Demo Class</option>
+          </select>
         </div>
 
         <div style={{ marginBottom: 20 }}>

@@ -224,12 +224,24 @@ export async function generateAdmissionCardPDF(
     s1y = lv(doc, "Strategy:",      strategy,  M, s1y, 32);
 
     const grades: string[] = [];
-    if (screening.ft_rhythmGrade)    grades.push(`Rhythm: ${screening.ft_rhythmGrade}`);
-    if (screening.ft_dexterityGrade) grades.push(`Dexterity: ${screening.ft_dexterityGrade}`);
-    if (instrument === "guitar"   && screening.ft_pitchGrade)    grades.push(`Pitch: ${screening.ft_pitchGrade}`);
-    if (instrument === "keyboard" && screening.ft_pitchGrade)    grades.push(`Pitch Echo: ${screening.ft_pitchGrade}`);
-    if (instrument === "drums"    && screening.ft_rudimentGrade) grades.push(`Rudiments: ${screening.ft_rudimentGrade}`);
-    if (typeof screening.ft_totalScore === "number") grades.push(`Score: ${screening.ft_totalScore}/15`);
+    const gradeAnswers = screening.ft_gradeAnswers;
+    if (Array.isArray(gradeAnswers) && gradeAnswers.length > 0) {
+      for (const ga of gradeAnswers) {
+        const a = ga as Record<string, unknown>;
+        if (a.grade) grades.push(`${s(a.title) || s(a.code)}: ${s(a.grade)}`);
+      }
+    } else {
+      // Backward compatibility for screenings saved before the question bank existed.
+      if (screening.ft_rhythmGrade)    grades.push(`Rhythm: ${screening.ft_rhythmGrade}`);
+      if (screening.ft_dexterityGrade) grades.push(`Dexterity: ${screening.ft_dexterityGrade}`);
+      if (instrument === "guitar"   && screening.ft_pitchGrade)    grades.push(`Pitch: ${screening.ft_pitchGrade}`);
+      if (instrument === "keyboard" && screening.ft_pitchGrade)    grades.push(`Pitch Echo: ${screening.ft_pitchGrade}`);
+      if (instrument === "drums"    && screening.ft_rudimentGrade) grades.push(`Rudiments: ${screening.ft_rudimentGrade}`);
+    }
+    if (typeof screening.ft_totalScore === "number") {
+      const max = typeof screening.ft_maxScore === "number" ? screening.ft_maxScore : 15;
+      grades.push(`Score: ${screening.ft_totalScore}/${max}`);
+    }
     if (grades.length > 0) s1y = lv(doc, "Clinical Scores:", grades.join("  |  "), M, s1y, 32);
 
     let s2y = y;
