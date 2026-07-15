@@ -16,6 +16,9 @@ export interface ApplicationQuestion {
    *  admission card and detail panel, so it can't be renamed, though the field
    *  itself can still be relabeled, reordered, or removed. */
   locked?:   boolean;
+  /** When set, this question is only shown once the referenced question's answer
+   *  matches one of `equals` (string compare; for multi-select, any overlap counts). */
+  showIf?: { key: string; equals: string[] };
 }
 
 export function defaultApplicationQuestions(): ApplicationQuestion[] {
