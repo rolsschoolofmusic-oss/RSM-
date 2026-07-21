@@ -56,7 +56,7 @@ function fmtMonth(ym: string): string {
 
 export default function ExpensesPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="expenses">
       <ExpensesContent />
     </ProtectedRoute>
   );

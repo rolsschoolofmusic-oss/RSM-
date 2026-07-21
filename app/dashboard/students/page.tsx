@@ -150,7 +150,7 @@ function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?:
 
 export default function StudentsPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]} sectionKey="students">
       <StudentsContent />
     </ProtectedRoute>
   );

@@ -12,12 +12,12 @@ import { ROLES } from "@/config/constants";
 import {
   getQuestionBank, saveQuestionBank, genQuestionId, redistributeMarks,
   FAST_TRACK_TOTAL_MARKS, type FastTrackQuestion,
+  getTrackQuestionBank, saveTrackQuestionBank, type TrackTestQuestion,
 } from "@/services/screening/questionBank.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type GuitarStream = "little-mozarts" | "fast-track" | "joyful-track" | "creative-track";
 type Grade = "High" | "Medium" | "Low";
-type SensoryResp = "Positive" | "Neutral" | "Withdrawal" | "Distress";
 
 interface StudentOption { uid: string; name: string; studentID: string; }
 
@@ -34,7 +34,6 @@ interface GuitarConfig {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GRADE_SCORE: Record<Grade, number> = { High: 5, Medium: 3, Low: 1 };
-const SENSORY_SCORE: Record<SensoryResp, number> = { Positive: 4, Neutral: 3, Withdrawal: 2, Distress: 1 };
 
 const GRADE_CFG: Record<Grade, { border: string; bg: string; color: string }> = {
   High:   { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
@@ -62,7 +61,7 @@ const STEP_LABELS: Record<GuitarStream, string[]> = {
   "creative-track": ["Student Info", "Sensory Eval",  "Config & Save"],
 };
 
-const GT_INSTRUMENTS = ["Guitar (Classical)", "Guitar (Acoustic)", "Piano", "Ukulele", "None"] as const;
+const GT_NOTATION_OPTIONS = ["Standard Notation", "Tabs", "Chord Charts", "None"] as const;
 const MUSICAL_BACKGROUND_OPTIONS = [
   "Complete Beginner", "Self-Taught / Hobbyist", "Formal Music Lessons Before", "Transitioning from Another Instrument",
 ] as const;
@@ -80,26 +79,104 @@ const JT_GENRES = [
   "Jazz / Blues", "Folk", "Devotional / Bhajan", "Other",
 ] as const;
 
-const SENSORY_TESTS = [
+// ─── Track question banks (editable, mirrors Fast Track's question bank) ──────
+const GRADE_OPTIONS = ["High", "Medium", "Low"];
+const SENSORY_OPTIONS = ["Positive", "Neutral", "Withdrawal", "Distress"];
+
+const LM_QUESTIONS: TrackTestQuestion[] = [
   {
-    id: "audioReaction",
-    title: "Audio Texture Response",
-    sub: "Play a clean fingerpicked arpeggio (no effects) then a strummed chord",
-    procedure: "Present each sound with minimal instruction. Observe body language, facial expression, and any verbal cues before scoring.",
+    id: "lm-01", code: "LM-01", title: "Tactile Sensitivity",
+    sub: "Invite the child to touch a guitar string — observe their initial response. Do not prompt a second attempt.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Reaches out readily, curious or pleased.",
+      Neutral: "Touches without a strong reaction either way.",
+      Withdrawal: "Hesitates or pulls back, but can be coaxed.",
+      Distress: "Refuses to touch or reacts negatively.",
+    },
   },
   {
-    id: "stringContact",
-    title: "String Contact Sensitivity",
-    sub: "Invite the student to pluck a single open string — no guidance given",
-    procedure: "Allow the student to initiate contact freely. Note hesitation, pressure used, and whether the student repeats unprompted.",
+    id: "lm-02", code: "LM-02", title: "Rhythmic Response",
+    sub: "Clap or tap a simple steady beat and invite the child to copy it.",
+    options: GRADE_OPTIONS,
+    optionDescs: {
+      High: "Copies the beat with clear timing and enthusiasm.",
+      Medium: "Attempts to copy with some timing drift.",
+      Low: "Little to no attempt to match the beat.",
+    },
   },
   {
-    id: "rhythmPulse",
-    title: "Rhythmic Pulse Sync",
-    sub: "Tap a steady 60 BPM pulse on the guitar body and invite the student to join",
-    procedure: "Tap with palm on the soundboard. Observe whether the student mirrors, delays, avoids, or ignores the pattern.",
+    id: "lm-03", code: "LM-03", title: "Fretboard Exploration",
+    sub: "Let the child freely explore the fretboard and strings under supervision.",
+    options: GRADE_OPTIONS,
+    optionDescs: {
+      High: "Shows strong curiosity, explores widely and confidently.",
+      Medium: "Explores briefly, needs some prompting.",
+      Low: "Shows little interest, reach or engagement is limited.",
+    },
   },
-] as const;
+];
+
+const JT_QUESTIONS: TrackTestQuestion[] = [
+  {
+    id: "jt-01", code: "JT-01", title: "Posture Comfort",
+    sub: "Observe posture and comfort when holding the guitar.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Settles into a comfortable, relaxed hold quickly.",
+      Neutral: "Holds the instrument adequately, no strong signal.",
+      Withdrawal: "Some visible discomfort or repositioning.",
+      Distress: "Clear discomfort or pain, avoids holding it.",
+    },
+  },
+  {
+    id: "jt-02", code: "JT-02", title: "Hand Flexibility Check",
+    sub: "Ask the student to spread all fingers wide and hold for 5 seconds. Observe comfort and range.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Full range, held comfortably without strain.",
+      Neutral: "Adequate range, mild effort.",
+      Withdrawal: "Limited range or visible strain.",
+      Distress: "Significant difficulty or discomfort.",
+    },
+  },
+];
+
+const CT_QUESTIONS: TrackTestQuestion[] = [
+  {
+    id: "ct-01", code: "CT-01", title: "Audio Texture Response",
+    sub: "Play a clean fingerpicked arpeggio (no effects) then a strummed chord. Present each sound with minimal instruction — observe body language, facial expression, and any verbal cues before scoring.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Engaged, curious, or visibly enjoys the sounds.",
+      Neutral: "Attentive without a strong reaction.",
+      Withdrawal: "Mild discomfort, looks away, covers ears briefly.",
+      Distress: "Strong aversive reaction, needs the sound stopped.",
+    },
+  },
+  {
+    id: "ct-02", code: "CT-02", title: "String Contact Sensitivity",
+    sub: "Invite the student to pluck a single open string — no guidance given. Allow the student to initiate contact freely; note hesitation, pressure used, and whether they repeat unprompted.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Initiates contact readily, may repeat unprompted.",
+      Neutral: "Touches the string calmly when invited.",
+      Withdrawal: "Hesitant, light or reluctant contact.",
+      Distress: "Avoids contact entirely or reacts negatively.",
+    },
+  },
+  {
+    id: "ct-03", code: "CT-03", title: "Rhythmic Pulse Sync",
+    sub: "Tap a steady 60 BPM pulse on the guitar body and invite the student to join. Tap with palm on the soundboard — observe whether the student mirrors, delays, avoids, or ignores the pattern.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Mirrors the pulse readily and stays in sync.",
+      Neutral: "Joins in with inconsistent timing.",
+      Withdrawal: "Delayed or minimal participation.",
+      Distress: "Avoids or ignores the pattern entirely.",
+    },
+  },
+];
 
 const GUITAR_TESTS: FastTrackQuestion[] = [
   {
@@ -150,8 +227,8 @@ function computeFtConfig(all: Grade[]): GuitarConfig {
   };
 }
 
-function computeJtConfig(posture: SensoryResp | null, flex: SensoryResp | null): GuitarConfig {
-  const low = posture === "Distress" || flex === "Distress" || posture === "Withdrawal" || flex === "Withdrawal";
+function computeJtConfig(answers: string[]): GuitarConfig {
+  const low = answers.some(a => a === "Distress" || a === "Withdrawal");
   return low
     ? {
         track: "Delta Slab", syllabusStrategy: "Gentle Engagement — Comfort-First Approach",
@@ -283,46 +360,92 @@ function GradeCard({ question, value, onChange, accent, editable, onQuestionChan
   );
 }
 
-function SensoryCard({ id, title, sub, procedure, value, onChange, accent }: {
-  id: string; title: string; sub: string; procedure: string;
-  value: SensoryResp | null; onChange: (r: SensoryResp) => void; accent: string;
+const OPTION_COLORS: Record<string, { border: string; bg: string; color: string }> = {
+  High:       { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
+  Medium:     { border: "#a05a2c", bg: "#f7ece1", color: "#7a4a1f" },
+  Low:        { border: "#dc2626", bg: "#fef2f2", color: "#991b1b" },
+  Positive:   { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
+  Neutral:    { border: "#2563eb", bg: "#eff6ff", color: "#1d4ed8" },
+  Withdrawal: { border: "#a05a2c", bg: "#f7ece1", color: "#7a4a1f" },
+  Distress:   { border: "#dc2626", bg: "#fef2f2", color: "#991b1b" },
+};
+function optionColor(opt: string) {
+  return OPTION_COLORS[opt] ?? { border: "#6b7280", bg: "#f3f4f6", color: "#374151" };
+}
+
+// ─── Generic editable test card (Little Mozarts / Joyful Track / Creative Track) ──
+function TestCard({ question, value, onChange, accent, editable, onQuestionChange, onRemove, canRemove }: {
+  question: TrackTestQuestion;
+  value: string | null; onChange: (opt: string) => void; accent: string;
+  editable?: boolean;
+  onQuestionChange?: (q: TrackTestQuestion) => void;
+  onRemove?: () => void;
+  canRemove?: boolean;
 }) {
-  const opts: SensoryResp[] = ["Positive", "Neutral", "Withdrawal", "Distress"];
-  const colors: Record<SensoryResp, { border: string; bg: string; color: string }> = {
-    Positive:   { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
-    Neutral:    { border: "#2563eb", bg: "#eff6ff", color: "#1d4ed8" },
-    Withdrawal: { border: "#a05a2c", bg: "#f7ece1", color: "#7a4a1f" },
-    Distress:   { border: "#dc2626", bg: "#fef2f2", color: "#991b1b" },
-  };
+  const { code, title, sub, options, optionDescs } = question;
+
+  if (editable) {
+    const setOptionDesc = (opt: string, val: string) => {
+      onQuestionChange?.({ ...question, optionDescs: { ...optionDescs, [opt]: val } });
+    };
+    return (
+      <div style={{ ...card, gridColumn: "span 12", border: `1.5px dashed ${accent}55` }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }} className="scr-sensory-grid">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <input value={code} onChange={e => onQuestionChange?.({ ...question, code: e.target.value })}
+              placeholder="Code" style={{ ...inputStyle, fontSize: 11, fontWeight: 800, padding: "5px 9px", width: 90 }} />
+            <input value={title} onChange={e => onQuestionChange?.({ ...question, title: e.target.value })}
+              placeholder="Question title" style={{ ...inputStyle, fontWeight: 700, fontSize: 13 }} />
+            <textarea value={sub} onChange={e => onQuestionChange?.({ ...question, sub: e.target.value })}
+              placeholder="Instructions / setup" rows={3} style={{ ...inputStyle, resize: "vertical", fontSize: 12, lineHeight: 1.5 }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {options.map(opt => (
+              <div key={opt} style={{ border: "1.5px solid #f0f0f0", borderRadius: 10, padding: "8px 10px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 5 }}>{opt}</div>
+                <textarea value={optionDescs[opt] ?? ""} rows={2}
+                  onChange={e => setOptionDesc(opt, e.target.value)}
+                  style={{ ...inputStyle, fontSize: 11, resize: "vertical", padding: "6px 8px", lineHeight: 1.4 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        {onRemove && (
+          <button type="button" onClick={onRemove} disabled={!canRemove}
+            style={{ marginTop: 10, width: "100%", padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca",
+              background: canRemove ? "#fef2f2" : "#f9fafb", color: canRemove ? "#dc2626" : "#d1d5db",
+              fontSize: 11, fontWeight: 700, cursor: canRemove ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+            🗑 Remove Question
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ ...card, gridColumn: "span 12" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }} className="scr-sensory-grid">
         <div>
           <span style={{ fontSize: 10, fontWeight: 800, color: accent, letterSpacing: "0.1em",
             textTransform: "uppercase", background: `${accent}18`, padding: "2px 8px", borderRadius: 6 }}>
-            {id.replace(/([A-Z])/g, " $1").trim()}
+            {code}
           </span>
           <div style={{ fontWeight: 700, fontSize: 14, color: "#111", marginTop: 8 }}>{title}</div>
           <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{sub}</div>
-          <div style={{ marginTop: 12, background: "#f8f9fa", borderRadius: 10, padding: "10px 14px",
-            fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
-            <span style={{ fontWeight: 700, color: "#374151" }}>Procedure: </span>{procedure}
-          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 7, justifyContent: "center" }}>
-          {opts.map(opt => {
+          {options.map(opt => {
             const sel = value === opt;
-            const c = colors[opt];
+            const c = optionColor(opt);
             return (
               <button key={opt} onClick={() => onChange(opt)}
                 style={{ textAlign: "left", border: `1.5px solid ${sel ? c.border : "#f0f0f0"}`,
                   background: sel ? c.bg : "#fafafa", borderRadius: 10, padding: "9px 14px",
-                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
-                  display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 10, height: 10, borderRadius: "50%",
-                  background: sel ? c.border : "#d1d5db", flexShrink: 0, transition: "all 0.15s" }} />
-                <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500,
-                  color: sel ? c.color : "#374151" }}>{opt}</span>
+                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: sel ? c.color : "#374151" }}>{opt}</div>
+                {optionDescs[opt] && (
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2, lineHeight: 1.4 }}>{optionDescs[opt]}</div>
+                )}
               </button>
             );
           })}
@@ -432,12 +555,14 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
   const [lm_handSize,       setLmHandSize]        = useState("");
   const [lm_attention,      setLmAttention]       = useState("");
   const [lm_interactionStyle, setLmInteraction]  = useState("");
-  const [lm_tactile,        setLmTactile]         = useState<SensoryResp | null>(null);
-  const [lm_rhythm,         setLmRhythm]          = useState<Grade | null>(null);
-  const [lm_fretboard,      setLmFretboard]       = useState<Grade | null>(null);
+  const [lm_questions,   setLmQuestions]   = useState<TrackTestQuestion[]>(LM_QUESTIONS);
+  const [lmAnswers,      setLmAnswers]     = useState<Record<string, string>>({});
+  const [lmEditMode,     setLmEditMode]    = useState(false);
+  const [lmDraftQuestions, setLmDraftQuestions] = useState<TrackTestQuestion[]>(LM_QUESTIONS);
+  const [lmBankSaving,   setLmBankSaving]  = useState(false);
 
   // ── FT state ────────────────────────────────────────────────────────────────
-  const [ft_priorInstruments,   setFtPrior]           = useState<string[]>([]);
+  const [ft_notation,           setFtNotation]        = useState<string[]>([]);
   const [ft_performanceGoal,    setFtGoal]            = useState("");
   const [ft_musicalBackground,  setFtBackground]      = useState("");
   const [ft_practiceCommitment, setFtPractice]        = useState("");
@@ -453,17 +578,21 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
   const [jt_motivation,     setJtMotivation] = useState("");
   const [jt_practiceTime,   setJtPractice]  = useState("");
   const [jt_physicalNotes,  setJtPhysical]  = useState("");
-  const [jt_posture,        setJtPosture]   = useState<SensoryResp | null>(null);
-  const [jt_handFlexibility,setJtFlex]      = useState<SensoryResp | null>(null);
-  const [jt_visualMemory,   setJtVisual]    = useState<Grade | null>(null);
+  const [jt_questions,   setJtQuestions]   = useState<TrackTestQuestion[]>(JT_QUESTIONS);
+  const [jtAnswers,      setJtAnswers]     = useState<Record<string, string>>({});
+  const [jtEditMode,     setJtEditMode]    = useState(false);
+  const [jtDraftQuestions, setJtDraftQuestions] = useState<TrackTestQuestion[]>(JT_QUESTIONS);
+  const [jtBankSaving,   setJtBankSaving]  = useState(false);
 
   // ── CT state ────────────────────────────────────────────────────────────────
   const [ct_emotionalTriggers, setCtTriggers]  = useState("");
   const [ct_soundThreshold,    setCtSound]     = useState("");
   const [ct_visualMods,        setCtVisual]    = useState("");
-  const [ct_audioReaction,     setCtAudio]     = useState<SensoryResp | null>(null);
-  const [ct_stringContact,     setCtContact]   = useState<SensoryResp | null>(null);
-  const [ct_rhythmPulse,       setCtRhythm]    = useState<SensoryResp | null>(null);
+  const [ct_questions,   setCtQuestions]   = useState<TrackTestQuestion[]>(CT_QUESTIONS);
+  const [ctAnswers,      setCtAnswers]     = useState<Record<string, string>>({});
+  const [ctEditMode,     setCtEditMode]    = useState(false);
+  const [ctDraftQuestions, setCtDraftQuestions] = useState<TrackTestQuestion[]>(CT_QUESTIONS);
+  const [ctBankSaving,   setCtBankSaving]  = useState(false);
   const [ct_metronomeEnabled,  setCtMetronome] = useState(false);
   const [ct_metronomeBpm,      setCtBpm]       = useState(60);
   const [ct_strumTechnique,    setCtStrum]     = useState<GuitarConfig["strumTechnique"]>("Fingerpicking");
@@ -474,25 +603,34 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
     setStudentName(""); setLinkedStudent(null); setShowDropdown(false);
     setSaved(false); setSaveErr(""); setSaving(false);
     setLmDevFocus(""); setLmHandSize(""); setLmAttention(""); setLmInteraction("");
-    setLmTactile(null); setLmRhythm(null); setLmFretboard(null);
-    setFtPrior([]); setFtGoal(""); setFtBackground(""); setFtPractice(""); setFtLearningStyle("");
-    setFtGradeMap({});
+    setLmAnswers({}); setLmEditMode(false);
+    setFtNotation([]); setFtGoal(""); setFtBackground(""); setFtPractice(""); setFtLearningStyle("");
+    setFtGradeMap({}); setFtEditMode(false);
     setJtGenres([]); setJtMotivation(""); setJtPractice(""); setJtPhysical("");
-    setJtPosture(null); setJtFlex(null); setJtVisual(null);
+    setJtAnswers({}); setJtEditMode(false);
     setCtTriggers(""); setCtSound(""); setCtVisual("");
-    setCtAudio(null); setCtContact(null); setCtRhythm(null);
+    setCtAnswers({}); setCtEditMode(false);
     setCtMetronome(false); setCtBpm(60); setCtStrum("Fingerpicking");
   }, []);
 
   useEffect(() => { resetAll(stream); }, [stream, resetAll]);
 
-  // ── Load Fast Track question bank (falls back to defaults if unsaved) ───────
+  // ── Load question banks (falls back to defaults if unsaved) ─────────────────
   useEffect(() => {
     getQuestionBank("guitar").then(qs => {
       if (qs && qs.length > 0) {
         const balanced = redistributeMarks(qs);
         setFtQuestions(balanced); setFtDraftQuestions(balanced);
       }
+    }).catch(() => {});
+    getTrackQuestionBank("guitar", "lmQuestions").then(qs => {
+      if (qs && qs.length > 0) { setLmQuestions(qs); setLmDraftQuestions(qs); }
+    }).catch(() => {});
+    getTrackQuestionBank("guitar", "jtQuestions").then(qs => {
+      if (qs && qs.length > 0) { setJtQuestions(qs); setJtDraftQuestions(qs); }
+    }).catch(() => {});
+    getTrackQuestionBank("guitar", "ctQuestions").then(qs => {
+      if (qs && qs.length > 0) { setCtQuestions(qs); setCtDraftQuestions(qs); }
     }).catch(() => {});
   }, []);
 
@@ -539,7 +677,7 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
   const derivedConfig: GuitarConfig | null = (() => {
     if (stream === "little-mozarts") return lmConfig();
     if (stream === "fast-track" && ftAllAnswered) return computeFtConfig(ftAnsweredGrades);
-    if (stream === "joyful-track") return computeJtConfig(jt_posture, jt_handFlexibility);
+    if (stream === "joyful-track") return computeJtConfig(Object.values(jtAnswers));
     if (stream === "creative-track") return ctConfig(ct_metronomeEnabled, ct_metronomeBpm, ct_strumTechnique);
     return null;
   })();
@@ -558,10 +696,7 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
       };
       if (stream === "little-mozarts") Object.assign(payload, {
         lm_devFocus, lm_handSize, lm_attention, lm_interactionStyle,
-        lm_tactile, lm_rhythm, lm_fretboard,
-        lm_tactileScore: lm_tactile ? SENSORY_SCORE[lm_tactile] : null,
-        lm_rhythmScore: lm_rhythm ? GRADE_SCORE[lm_rhythm] : null,
-        lm_fretboardScore: lm_fretboard ? GRADE_SCORE[lm_fretboard] : null,
+        lm_answers: lm_questions.map(q => ({ questionId: q.id, code: q.code, title: q.title, answer: lmAnswers[q.id] ?? null })),
       });
       if (stream === "fast-track") {
         const gradeAnswers = ft_questions.map(q => {
@@ -570,7 +705,7 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
           return { questionId: q.id, code: q.code, title: q.title, grade: g, marks: rub?.marks ?? 0 };
         });
         Object.assign(payload, {
-          ft_priorInstruments, ft_performanceGoal, ft_musicalBackground, ft_practiceCommitment, ft_learningStyle,
+          ft_notation, ft_performanceGoal, ft_musicalBackground, ft_practiceCommitment, ft_learningStyle,
           ft_gradeAnswers: gradeAnswers,
           ft_totalScore: gradeAnswers.reduce((a, g) => a + g.marks, 0),
           ft_maxScore: ft_questions.reduce((a, q) => a + Math.max(...q.rubric.map(r => r.marks)), 0),
@@ -578,11 +713,11 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
       }
       if (stream === "joyful-track") Object.assign(payload, {
         jt_genres, jt_motivation, jt_practiceTime, jt_physicalNotes,
-        jt_posture, jt_handFlexibility, jt_visualMemory,
+        jt_answers: jt_questions.map(q => ({ questionId: q.id, code: q.code, title: q.title, answer: jtAnswers[q.id] ?? null })),
       });
       if (stream === "creative-track") Object.assign(payload, {
         ct_emotionalTriggers, ct_soundThreshold, ct_visualMods,
-        ct_audioReaction, ct_stringContact, ct_rhythmPulse,
+        ct_answers: ct_questions.map(q => ({ questionId: q.id, code: q.code, title: q.title, answer: ctAnswers[q.id] ?? null })),
         ct_metronomeEnabled, ct_metronomeBpm, ct_strumTechnique,
       });
       await addDoc(collection(db, "guitar-screenings"), payload);
@@ -693,6 +828,39 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
           })}
         </div>
 
+        {isAdmin && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            {stream === "little-mozarts" && !lmEditMode && (
+              <button type="button"
+                onClick={() => { setLmDraftQuestions(lm_questions); setLmEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+            {stream === "fast-track" && !ftEditMode && (
+              <button type="button"
+                onClick={() => { setFtDraftQuestions(ft_questions); setFtEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+            {stream === "joyful-track" && !jtEditMode && (
+              <button type="button"
+                onClick={() => { setJtDraftQuestions(jt_questions); setJtEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+            {stream === "creative-track" && !ctEditMode && (
+              <button type="button"
+                onClick={() => { setCtDraftQuestions(ct_questions); setCtEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Stepper */}
         <Stepper steps={stepLabels} current={step} accent={ACCENT} />
 
@@ -746,7 +914,7 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* LITTLE MOZARTS */}
             {stream === "little-mozarts" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
+                <div style={{ ...card, gridColumn: "span 12" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Early Development Profile
                   </div>
@@ -761,38 +929,6 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
                       <input value={key} onChange={e => set(e.target.value)} placeholder={ph} style={inputStyle} />
                     </div>
                   ))}
-                </div>
-
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Tactile Sensitivity
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
-                    Invite the child to touch a guitar string — observe their initial response.
-                    Do not prompt a second attempt.
-                  </div>
-                  {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-                    const colors: Record<SensoryResp, { border: string; bg: string; color: string }> = {
-                      Positive: { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
-                      Neutral: { border: "#2563eb", bg: "#eff6ff", color: "#1d4ed8" },
-                      Withdrawal: { border: "#a05a2c", bg: "#f7ece1", color: "#7a4a1f" },
-                      Distress: { border: "#dc2626", bg: "#fef2f2", color: "#991b1b" },
-                    };
-                    const sel = lm_tactile === opt; const c = colors[opt];
-                    return (
-                      <button key={opt} onClick={() => setLmTactile(opt)}
-                        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%",
-                          textAlign: "left", border: `1.5px solid ${sel ? c.border : "#f0f0f0"}`,
-                          background: sel ? c.bg : "#fafafa", borderRadius: 10,
-                          padding: "10px 14px", cursor: "pointer", fontFamily: "inherit",
-                          marginBottom: 7, transition: "all 0.15s" }}>
-                        <div style={{ width: 10, height: 10, borderRadius: "50%",
-                          background: sel ? c.border : "#d1d5db", flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500,
-                          color: sel ? c.color : "#374151" }}>{opt}</span>
-                      </button>
-                    );
-                  })}
                 </div>
 
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
@@ -810,16 +946,16 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
                     Background Information
                   </div>
                   <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Prior Instruments</label>
+                    <label style={labelStyle}>Notation Familiarity</label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                      {GT_INSTRUMENTS.map(inst => {
-                        const sel = ft_priorInstruments.includes(inst);
+                      {GT_NOTATION_OPTIONS.map(opt => {
+                        const sel = ft_notation.includes(opt);
                         return (
-                          <button key={inst} onClick={() => setFtPrior(p => sel ? p.filter(x => x !== inst) : [...p, inst])}
+                          <button key={opt} onClick={() => setFtNotation(p => sel ? p.filter(x => x !== opt) : [...p, opt])}
                             style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${sel ? ACCENT : "#e5e7eb"}`,
                               background: sel ? `${ACCENT}18` : "#fafafa", color: sel ? ACCENT : "#6b7280",
                               fontSize: 12, fontWeight: sel ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
-                            {inst}
+                            {opt}
                           </button>
                         );
                       })}
@@ -933,30 +1069,10 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Physical Considerations
                   </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Physical Notes</label>
-                    <textarea value={jt_physicalNotes} onChange={e => setJtPhysical(e.target.value)}
-                      rows={3} placeholder="Arthritis, wrist issues, grip strength, any relevant notes…"
-                      style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, marginBottom: 8 }}>
-                    Posture Comfort (observe when holding guitar)
-                  </div>
-                  {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-                    const sel = jt_posture === opt;
-                    const cols: Record<SensoryResp, string> = { Positive: "#16a34a", Neutral: "#2563eb", Withdrawal: "#a05a2c", Distress: "#dc2626" };
-                    return (
-                      <button key={opt} onClick={() => setJtPosture(opt)}
-                        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
-                          border: `1.5px solid ${sel ? cols[opt] : "#f0f0f0"}`, borderRadius: 9,
-                          background: sel ? `${cols[opt]}14` : "#fafafa", padding: "8px 12px",
-                          cursor: "pointer", fontFamily: "inherit", marginBottom: 6, transition: "all 0.15s" }}>
-                        <div style={{ width: 9, height: 9, borderRadius: "50%",
-                          background: sel ? cols[opt] : "#d1d5db", flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? cols[opt] : "#374151" }}>{opt}</span>
-                      </button>
-                    );
-                  })}
+                  <label style={labelStyle}>Physical Notes</label>
+                  <textarea value={jt_physicalNotes} onChange={e => setJtPhysical(e.target.value)}
+                    rows={3} placeholder="Arthritis, wrist issues, grip strength, any relevant notes…"
+                    style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
                 </div>
 
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
@@ -969,7 +1085,7 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* CREATIVE TRACK */}
             {stream === "creative-track" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
+                <div style={{ ...card, gridColumn: "span 12" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Sensory Profile
                   </div>
@@ -989,60 +1105,6 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
                   ))}
                 </div>
 
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Guitar Sensory Tests
-                  </div>
-                  {SENSORY_TESTS.slice(0, 2).map(({ id, title, sub }) => {
-                    const val = id === "audioReaction" ? ct_audioReaction : ct_stringContact;
-                    const set = id === "audioReaction" ? setCtAudio : setCtContact;
-                    const cols: Record<SensoryResp, string> = { Positive: "#16a34a", Neutral: "#2563eb", Withdrawal: "#a05a2c", Distress: "#dc2626" };
-                    return (
-                      <div key={id} style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#111", marginBottom: 2 }}>{title}</div>
-                        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>{sub}</div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-                            const sel = val === opt;
-                            return (
-                              <button key={opt} onClick={() => set(opt)}
-                                style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: `1.5px solid ${sel ? cols[opt] : "#f0f0f0"}`,
-                                  background: sel ? `${cols[opt]}14` : "#fafafa", fontSize: 10, fontWeight: sel ? 700 : 500,
-                                  color: sel ? cols[opt] : "#6b7280", cursor: "pointer", fontFamily: "inherit" }}>
-                                {opt}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* Rhythm pulse */}
-                  {(() => {
-                    const t = SENSORY_TESTS[2];
-                    const cols: Record<SensoryResp, string> = { Positive: "#16a34a", Neutral: "#2563eb", Withdrawal: "#a05a2c", Distress: "#dc2626" };
-                    return (
-                      <div style={{ marginBottom: 4 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#111", marginBottom: 2 }}>{t.title}</div>
-                        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>{t.sub}</div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-                            const sel = ct_rhythmPulse === opt;
-                            return (
-                              <button key={opt} onClick={() => setCtRhythm(opt)}
-                                style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: `1.5px solid ${sel ? cols[opt] : "#f0f0f0"}`,
-                                  background: sel ? `${cols[opt]}14` : "#fafafa", fontSize: 10, fontWeight: sel ? 700 : 500,
-                                  color: sel ? cols[opt] : "#6b7280", cursor: "pointer", fontFamily: "inherit" }}>
-                                {opt}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(1)} style={btnSec}>← Back</button>
                   <button onClick={() => setStep(3)} style={btnPrimary}>Continue →</button>
@@ -1058,77 +1120,85 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* LITTLE MOZARTS */}
             {stream === "little-mozarts" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Early Guitar Assessment
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {!lmEditMode ? (
+                      <button type="button" onClick={() => { setLmDraftQuestions(lm_questions); setLmEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => setLmDraftQuestions(qs => [...qs, {
+                            id: genQuestionId("lm"), code: `LM-${String(qs.length + 1).padStart(2, "0")}`,
+                            title: "New Question", sub: "", options: GRADE_OPTIONS, optionDescs: {},
+                          }])} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={() => { setLmDraftQuestions(lm_questions); setLmEditMode(false); }}
+                          disabled={lmBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" disabled={lmBankSaving}
+                          onClick={async () => {
+                            setLmBankSaving(true);
+                            try {
+                              await saveTrackQuestionBank("guitar", "lmQuestions", lmDraftQuestions, user?.uid ?? "unknown");
+                              setLmQuestions(lmDraftQuestions); setLmAnswers({}); setLmEditMode(false);
+                            } finally { setLmBankSaving(false); }
+                          }}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: lmBankSaving ? 0.6 : 1 }}>
+                          {lmBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <div style={{ marginBottom: 18 }}>
-                    <label style={labelStyle}>Rhythmic Response</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {(["High", "Medium", "Low"] as Grade[]).map(g => {
-                        const sel = lm_rhythm === g; const cfg = GRADE_CFG[g];
-                        return (
-                          <button key={g} onClick={() => setLmRhythm(g)}
-                            style={{ textAlign: "left", border: `1.5px solid ${sel ? cfg.border : "#f0f0f0"}`,
-                              background: sel ? cfg.bg : "#fafafa", borderRadius: 10,
-                              padding: "9px 14px", cursor: "pointer", fontFamily: "inherit" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : "#374151" }}>{g}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Fretboard Exploration (curiosity & reach)</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {(["High", "Medium", "Low"] as Grade[]).map(g => {
-                        const sel = lm_fretboard === g; const cfg = GRADE_CFG[g];
-                        return (
-                          <button key={g} onClick={() => setLmFretboard(g)}
-                            style={{ textAlign: "left", border: `1.5px solid ${sel ? cfg.border : "#f0f0f0"}`,
-                              background: sel ? cfg.bg : "#fafafa", borderRadius: 10,
-                              padding: "9px 14px", cursor: "pointer", fontFamily: "inherit" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : "#374151" }}>{g}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 14 }}>
-                    Recommended Config
+                {lmEditMode
+                  ? lmDraftQuestions.map(q => (
+                      <TestCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => setLmDraftQuestions(qs => qs.map(x => x.id === q.id ? updated : x))}
+                        onRemove={() => setLmDraftQuestions(qs => qs.length > 1 ? qs.filter(x => x.id !== q.id) : qs)}
+                        canRemove={lmDraftQuestions.length > 1} />
+                    ))
+                  : lm_questions.map(q => (
+                      <TestCard key={q.id} question={q} accent={ACCENT}
+                        value={lmAnswers[q.id] ?? null}
+                        onChange={opt => setLmAnswers(prev => ({ ...prev, [q.id]: opt }))} />
+                    ))}
+
+                {!lmEditMode && (
+                  <div style={{ ...card, gridColumn: "span 12" }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 14 }}>
+                      Recommended Config
+                    </div>
+                    {(() => {
+                      const cfg = lmConfig();
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                          {[
+                            { label: "Track", val: cfg.track },
+                            { label: "Strategy", val: cfg.syllabusStrategy },
+                            { label: "Metronome", val: cfg.metronome ? `Yes @ ${cfg.metronomeBpm} BPM` : "No" },
+                            { label: "Strum Technique", val: cfg.strumTechnique },
+                            { label: "Chord Complexity", val: cfg.chordComplexity },
+                            { label: "Repertoire", val: cfg.repertoireDifficulty },
+                          ].map(({ label, val }) => (
+                            <div key={label} style={{ display: "flex", justifyContent: "space-between",
+                              padding: "8px 12px", background: "#f8f9fa", borderRadius: 10 }}>
+                              <span style={{ fontSize: 12, color: "#6b7280" }}>{label}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{val}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  {(() => {
-                    const cfg = lmConfig();
-                    return (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                        {[
-                          { label: "Track", val: cfg.track },
-                          { label: "Strategy", val: cfg.syllabusStrategy },
-                          { label: "Metronome", val: cfg.metronome ? `Yes @ ${cfg.metronomeBpm} BPM` : "No" },
-                          { label: "Strum Technique", val: cfg.strumTechnique },
-                          { label: "Chord Complexity", val: cfg.chordComplexity },
-                          { label: "Repertoire", val: cfg.repertoireDifficulty },
-                        ].map(({ label, val }) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between",
-                            padding: "8px 12px", background: "#f8f9fa", borderRadius: 10 }}>
-                            <span style={{ fontSize: 12, color: "#6b7280" }}>{label}</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{val}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
+                )}
 
                 {/* Save row */}
-                {renderSaveRow()}
+                {!lmEditMode && renderSaveRow()}
 
-                <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
-                  <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
-                </div>
+                {!lmEditMode && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
+                    <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1226,74 +1296,139 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* JOYFUL TRACK */}
             {stream === "joyful-track" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Hand Flexibility Check
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14, lineHeight: 1.6 }}>
-                    Ask the student to spread all fingers wide and hold for 5 seconds. Observe comfort and range.
-                  </div>
-                  {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-                    const sel = jt_handFlexibility === opt;
-                    const cols: Record<SensoryResp, string> = { Positive: "#16a34a", Neutral: "#2563eb", Withdrawal: "#a05a2c", Distress: "#dc2626" };
-                    return (
-                      <button key={opt} onClick={() => setJtFlex(opt)}
-                        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
-                          border: `1.5px solid ${sel ? cols[opt] : "#f0f0f0"}`, borderRadius: 9,
-                          background: sel ? `${cols[opt]}14` : "#fafafa", padding: "9px 12px",
-                          cursor: "pointer", fontFamily: "inherit", marginBottom: 7, transition: "all 0.15s" }}>
-                        <div style={{ width: 9, height: 9, borderRadius: "50%",
-                          background: sel ? cols[opt] : "#d1d5db", flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? cols[opt] : "#374151" }}>{opt}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Recommended Config
-                  </div>
-                  {(() => {
-                    const cfg = computeJtConfig(jt_posture, jt_handFlexibility);
-                    const sc2 = SLAB_CFG[cfg.track];
-                    return (
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {!jtEditMode ? (
+                      <button type="button" onClick={() => { setJtDraftQuestions(jt_questions); setJtEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
                       <>
-                        <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 12,
-                          background: sc2.bg, border: `1.5px solid ${sc2.border}` }}>
-                          <div style={{ fontWeight: 800, fontSize: 16, color: sc2.color }}>{cfg.track}</div>
-                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{cfg.syllabusStrategy}</div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {[
-                            { label: "Strum", val: cfg.strumTechnique },
-                            { label: "Capo", val: cfg.capoUsage ? "Enabled" : "Not Used" },
-                            { label: "Chords", val: cfg.chordComplexity },
-                            { label: "Repertoire", val: cfg.repertoireDifficulty },
-                          ].map(({ label, val }) => (
-                            <div key={label} style={{ display: "flex", justifyContent: "space-between",
-                              padding: "8px 12px", background: "#f8f9fa", borderRadius: 10 }}>
-                              <span style={{ fontSize: 12, color: "#6b7280" }}>{label}</span>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{val}</span>
-                            </div>
-                          ))}
-                        </div>
+                        <button type="button" onClick={() => setJtDraftQuestions(qs => [...qs, {
+                            id: genQuestionId("jt"), code: `JT-${String(qs.length + 1).padStart(2, "0")}`,
+                            title: "New Question", sub: "", options: SENSORY_OPTIONS, optionDescs: {},
+                          }])} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={() => { setJtDraftQuestions(jt_questions); setJtEditMode(false); }}
+                          disabled={jtBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" disabled={jtBankSaving}
+                          onClick={async () => {
+                            setJtBankSaving(true);
+                            try {
+                              await saveTrackQuestionBank("guitar", "jtQuestions", jtDraftQuestions, user?.uid ?? "unknown");
+                              setJtQuestions(jtDraftQuestions); setJtAnswers({}); setJtEditMode(false);
+                            } finally { setJtBankSaving(false); }
+                          }}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: jtBankSaving ? 0.6 : 1 }}>
+                          {jtBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
                       </>
-                    );
-                  })()}
-                </div>
+                    )}
+                  </div>
+                )}
 
-                {renderSaveRow()}
+                {jtEditMode
+                  ? jtDraftQuestions.map(q => (
+                      <TestCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => setJtDraftQuestions(qs => qs.map(x => x.id === q.id ? updated : x))}
+                        onRemove={() => setJtDraftQuestions(qs => qs.length > 1 ? qs.filter(x => x.id !== q.id) : qs)}
+                        canRemove={jtDraftQuestions.length > 1} />
+                    ))
+                  : jt_questions.map(q => (
+                      <TestCard key={q.id} question={q} accent={ACCENT}
+                        value={jtAnswers[q.id] ?? null}
+                        onChange={opt => setJtAnswers(prev => ({ ...prev, [q.id]: opt }))} />
+                    ))}
 
-                <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
-                  <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
-                </div>
+                {!jtEditMode && (
+                  <div style={{ ...card, gridColumn: "span 12" }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
+                      Recommended Config
+                    </div>
+                    {(() => {
+                      const cfg = computeJtConfig(Object.values(jtAnswers));
+                      const sc2 = SLAB_CFG[cfg.track];
+                      return (
+                        <>
+                          <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 12,
+                            background: sc2.bg, border: `1.5px solid ${sc2.border}` }}>
+                            <div style={{ fontWeight: 800, fontSize: 16, color: sc2.color }}>{cfg.track}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{cfg.syllabusStrategy}</div>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            {[
+                              { label: "Strum", val: cfg.strumTechnique },
+                              { label: "Capo", val: cfg.capoUsage ? "Enabled" : "Not Used" },
+                              { label: "Chords", val: cfg.chordComplexity },
+                              { label: "Repertoire", val: cfg.repertoireDifficulty },
+                            ].map(({ label, val }) => (
+                              <div key={label} style={{ display: "flex", justifyContent: "space-between", flex: "1 1 200px",
+                                padding: "8px 12px", background: "#f8f9fa", borderRadius: 10 }}>
+                                <span style={{ fontSize: 12, color: "#6b7280" }}>{label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{val}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {!jtEditMode && renderSaveRow()}
+
+                {!jtEditMode && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
+                    <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* CREATIVE TRACK */}
             {stream === "creative-track" && (
               <div style={grid12} className="scr-grid">
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {!ctEditMode ? (
+                      <button type="button" onClick={() => { setCtDraftQuestions(ct_questions); setCtEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => setCtDraftQuestions(qs => [...qs, {
+                            id: genQuestionId("ct"), code: `CT-${String(qs.length + 1).padStart(2, "0")}`,
+                            title: "New Question", sub: "", options: SENSORY_OPTIONS, optionDescs: {},
+                          }])} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={() => { setCtDraftQuestions(ct_questions); setCtEditMode(false); }}
+                          disabled={ctBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" disabled={ctBankSaving}
+                          onClick={async () => {
+                            setCtBankSaving(true);
+                            try {
+                              await saveTrackQuestionBank("guitar", "ctQuestions", ctDraftQuestions, user?.uid ?? "unknown");
+                              setCtQuestions(ctDraftQuestions); setCtAnswers({}); setCtEditMode(false);
+                            } finally { setCtBankSaving(false); }
+                          }}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: ctBankSaving ? 0.6 : 1 }}>
+                          {ctBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {ctEditMode
+                  ? ctDraftQuestions.map(q => (
+                      <TestCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => setCtDraftQuestions(qs => qs.map(x => x.id === q.id ? updated : x))}
+                        onRemove={() => setCtDraftQuestions(qs => qs.length > 1 ? qs.filter(x => x.id !== q.id) : qs)}
+                        canRemove={ctDraftQuestions.length > 1} />
+                    ))
+                  : ct_questions.map(q => (
+                      <TestCard key={q.id} question={q} accent={ACCENT}
+                        value={ctAnswers[q.id] ?? null}
+                        onChange={opt => setCtAnswers(prev => ({ ...prev, [q.id]: opt }))} />
+                    ))}
+
+                {ctEditMode ? null : <>
                 <div style={{ ...card, gridColumn: "span 7" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Teacher Overrides
@@ -1375,6 +1510,7 @@ export function GuitarScreeningContent({ onBack }: { onBack?: () => void }) {
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
                   <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
                 </div>
+                </>}
               </div>
             )}
           </>

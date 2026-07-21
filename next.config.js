@@ -2,6 +2,19 @@ const nextConfig = {
   // Disable React StrictMode — prevents double-invocation of effects in dev.
   reactStrictMode: false,
 
+  // ─── Dev-mode page cache ────────────────────────────────────────────────────
+  // Next's dev server disposes a compiled route's chunks after it goes
+  // unused for `maxInactiveAge`, keeping only `pagesBufferLength` routes warm.
+  // With ~30 dashboard routes, the default (25s / 5 pages) means switching
+  // between a few screens can dispose the chunks for a page you just left,
+  // so revisiting it (or a background poll) can momentarily 404 on
+  // main-app.js/page.js and trip ChunkErrorBoundary. Keep more pages warm
+  // for longer so that doesn't happen during normal use.
+  onDemandEntries: {
+    maxInactiveAge: 60 * 60 * 1000,
+    pagesBufferLength: 20,
+  },
+
   // ─── Cache headers ──────────────────────────────────────────────────────────
   // Hashed static chunks (_next/static/**) are safe to cache forever —
   // the hash changes on every deploy so stale content is never served.

@@ -97,7 +97,7 @@ function minMonth(): string {
 
 export default function FinancePage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="fees">
       <FinanceContent />
     </ProtectedRoute>
   );

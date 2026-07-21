@@ -83,7 +83,20 @@
       "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
       "Bash(nohup npm run dev)",
       "Bash(disown)",
-      "Bash(vercel project *)"
+      "Bash(vercel project *)",
+      "Bash(tasklist)",
+      "Bash(taskkill //F //PID 27248)",
+      "Bash(rm -rf .next)",
+      "Bash(npx skills *)",
+      "Bash(taskkill //F //PID 14676)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts, null, 2\\)\\)\")",
+      "Bash(wmic process *)",
+      "Bash(taskkill //F //PID 23076)",
+      "Bash(taskkill //F //PID 8784)",
+      "Bash(vercel link *)",
+      "Bash(vercel env *)",
+      "Bash(vercel deploy *)",
+      "Bash(taskkill //F //PID 9740)"
     ]
   }
 }

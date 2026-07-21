@@ -121,7 +121,7 @@ function ViewRow({ label, value, mono }: { label: string; value: string; mono?: 
 
 export default function CentersPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="centers">
       <CentersContent />
     </ProtectedRoute>
   );

@@ -8,6 +8,33 @@ import {
   type ApplicationQuestion, type ApplicationFieldType,
 } from "@/services/screening/applicationForm.service";
 
+// ─── Conditional visibility ─────────────────────────────────────────────────────
+/** Returns whether `question` should be shown, given the current set of answers
+ *  (keyed by question `key`). Questions without a `showIf` are always visible. */
+export function isQuestionVisible(question: ApplicationQuestion, answers: Record<string, unknown>): boolean {
+  if (!question.showIf) return true;
+  const { key, equals } = question.showIf;
+  const val = answers[key];
+  if (Array.isArray(val)) return val.some(v => equals.includes(String(v)));
+  return typeof val === "string" && equals.includes(val);
+}
+
+/** Clears answers for any question whose `showIf` condition is no longer met,
+ *  given the answers object right after one field's value changed. */
+export function clearHiddenAnswers(
+  template: ApplicationQuestion[],
+  answers: Record<string, unknown>,
+): Record<string, unknown> {
+  let next = answers;
+  for (const q of template) {
+    if (q.showIf && q.key in next && !isQuestionVisible(q, next)) {
+      if (next === answers) next = { ...answers };
+      delete next[q.key];
+    }
+  }
+  return next;
+}
+
 // ─── Shared pill-choice primitives ─────────────────────────────────────────────
 export function OptionGroup({ options, value, onChange }: {
   options: string[];

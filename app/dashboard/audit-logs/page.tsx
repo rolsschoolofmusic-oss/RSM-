@@ -39,7 +39,7 @@ function threeMonthsAgo(): Timestamp {
 
 export default function AuditLogsPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="auditLogs">
       <AuditLogsContent />
     </ProtectedRoute>
   );

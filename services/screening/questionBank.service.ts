@@ -37,11 +37,50 @@ export async function saveQuestionBank(
     fastTrackQuestions: questions,
     updatedAt: serverTimestamp(),
     updatedBy: uid,
-  });
+  }, { merge: true });
 }
 
 export function genQuestionId(prefix: string): string {
   return `${prefix.toLowerCase()}-${Date.now().toString(36)}`;
+}
+
+// ─── Generic track question bank ────────────────────────────────────────────
+// Used by the non-Fast-Track streams (Little Mozarts, Joyful Track, Creative
+// Track). Unlike Fast Track, these questions aren't marks-scored — each has a
+// fixed set of response options (e.g. Grade or sensory-response labels) with
+// an editable description per option.
+export interface TrackTestQuestion {
+  id:          string;
+  code:        string;
+  title:       string;
+  sub:         string;
+  options:     string[];
+  optionDescs: Record<string, string>;
+}
+
+export type TrackQuestionField = "lmQuestions" | "jtQuestions" | "ctQuestions";
+
+export async function getTrackQuestionBank(
+  instrument: ScreeningInstrument,
+  field:      TrackQuestionField,
+): Promise<TrackTestQuestion[] | null> {
+  const snap = await getDoc(doc(db, "screeningQuestionBanks", instrument));
+  if (!snap.exists()) return null;
+  const data = snap.data() as Record<TrackQuestionField, TrackTestQuestion[] | undefined>;
+  return data[field] ?? null;
+}
+
+export async function saveTrackQuestionBank(
+  instrument: ScreeningInstrument,
+  field:      TrackQuestionField,
+  questions:  TrackTestQuestion[],
+  uid:        string,
+): Promise<void> {
+  await setDoc(doc(db, "screeningQuestionBanks", instrument), {
+    [field]: questions,
+    updatedAt: serverTimestamp(),
+    updatedBy: uid,
+  }, { merge: true });
 }
 
 // ─── Marks distribution ─────────────────────────────────────────────────────

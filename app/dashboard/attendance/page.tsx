@@ -124,7 +124,7 @@ const ALL_STATUSES: AttendanceStatus[] = [
 
 export default function AttendancePage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]} sectionKey="attendance">
       <AttendanceContent />
     </ProtectedRoute>
   );

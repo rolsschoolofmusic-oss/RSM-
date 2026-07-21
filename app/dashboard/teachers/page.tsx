@@ -19,7 +19,7 @@ import { deleteUser as deleteUserRecord } from "@/services/admin/delete.service"
 
 export default function TeachersPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="teachers">
       <TeachersContent />
     </ProtectedRoute>
   );

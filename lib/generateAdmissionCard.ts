@@ -170,10 +170,9 @@ export async function generateAdmissionCardPDF(
   let m1y = y;
   m1y = lv(doc, "Instruments to Learn:", arr(admission.instrumentsToLearn).join(", ") || "—", M, m1y, 40);
   m1y = lv(doc, "Purpose of Learning:",  s(admission.purposeOfLearning)  || "—",              M, m1y, 40);
-  m1y = lv(doc, "Previous Experience:",  s(admission.previousExperience) || "—",              M, m1y, 40);
+  m1y = lv(doc, "Musical Experience:",   s(admission.musicalExperience)  || "—",              M, m1y, 40);
   let m2y = y;
   m2y = lv(doc, "Instruments Played:",  arr(admission.instrumentsPlayed).join(", ") || "—", COL2, m2y, 34);
-  m2y = lv(doc, "Musical Skill Level:", s(admission.musicalSkill)   || "—",                 COL2, m2y, 34);
   m2y = lv(doc, "How Heard About Us:",  s(admission.howHeardAboutUs)|| "—",                 COL2, m2y, 34);
 
   let extraY = Math.max(m1y, m2y);

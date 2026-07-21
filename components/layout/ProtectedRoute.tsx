@@ -3,15 +3,17 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { validateUserAccess, isRoleAllowed } from "@/lib/validators/auth.validators";
+import { validateUserAccess, isRoleAllowed, hasSectionAccess } from "@/lib/validators/auth.validators";
 import type { Role } from "@/types";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles: Role[];
+  /** Optional — gates on top of allowedRoles via hasSectionAccess (admin-only restriction). */
+  sectionKey?: string;
 }
 
-export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, allowedRoles, sectionKey }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -44,8 +46,15 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     // Logged in, active, but wrong role → login
     if (!isRoleAllowed(user, stableRoles)) {
       if (!redirectedRef.current) { redirectedRef.current = true; router.replace("/login"); }
+      return;
     }
-  }, [user, loading, stableRoles, router]);
+
+    // Right role, but this admin has been restricted away from this section →
+    // send them somewhere they can actually use, not the login screen.
+    if (!hasSectionAccess(user, sectionKey)) {
+      if (!redirectedRef.current) { redirectedRef.current = true; router.replace("/dashboard"); }
+    }
+  }, [user, loading, stableRoles, sectionKey, router]);
 
   // Show a neutral background while auth resolves — never return null which
   // would cause a hydration mismatch and a blank flash on SSR.
@@ -61,8 +70,9 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
 
   if (!user) return null;
 
-  // Block render if status or role fails — redirect already triggered above
+  // Block render if status, role, or section access fails — redirect already triggered above
   if (!validateUserAccess(user) || !isRoleAllowed(user, stableRoles)) return null;
+  if (!hasSectionAccess(user, sectionKey)) return null;
 
   return <>{children}</>;
 }

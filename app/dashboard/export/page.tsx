@@ -343,7 +343,7 @@ function Label({ children }: { children: React.ReactNode }) {
 
 export default function ExportPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="export">
       <ExportContent />
     </ProtectedRoute>
   );

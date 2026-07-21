@@ -134,6 +134,10 @@ export interface TeacherUser extends UserBase {
  */
 export interface AdminUser extends UserBase {
   role: typeof ROLES.ADMIN | typeof ROLES.SUPER_ADMIN;
+  /** Section keys this admin may access (see config/adminSections.ts).
+   *  undefined = full access (default for every admin until a super_admin
+   *  restricts them). Only ever consulted when role === ROLES.ADMIN. */
+  permissions?: string[];
   centerId?: never;
   currentBalance?: never;
   studentStatus?: never;

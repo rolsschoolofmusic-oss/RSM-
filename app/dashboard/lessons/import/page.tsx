@@ -16,7 +16,7 @@ import type { ExcelImportRow } from "@/types/lesson";
 
 export default function LessonImportPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="syllabus">
       <Suspense fallback={null}>
         <LessonImportContent />
       </Suspense>

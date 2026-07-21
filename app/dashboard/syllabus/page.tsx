@@ -37,7 +37,7 @@ import type {
 
 export default function SyllabusPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]} sectionKey="syllabus">
       <SyllabusContent />
     </ProtectedRoute>
   );

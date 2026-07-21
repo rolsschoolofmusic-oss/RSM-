@@ -34,19 +34,15 @@ export function defaultApplicationQuestions(): ApplicationQuestion[] {
       options: ["Piano", "Keyboard", "Guitar", "Drums", "Violin", "Vocal"],
     },
     {
-      id: "aq-prev-experience", key: "previousExperience", label: "Previous Experience in Music",
+      id: "aq-musical-experience", key: "musicalExperience", label: "What is your current musical experience?",
       type: "single-select", required: false, locked: true,
-      options: ["Well-Trained", "Average", "No Previous Experience"],
+      options: ["Beginner (Never played before)", "Intermediate (Can play basic tunes)", "Advanced (Plays professionally)"],
     },
     {
-      id: "aq-instruments-played", key: "instrumentsPlayed", label: "Instruments You Already Play",
+      id: "aq-instruments-played", key: "instrumentsPlayed", label: "Which instruments do you currently play?",
       type: "multi-select", required: false, locked: true,
-      options: ["Guitar", "Drums", "Keyboard", "None of the Above"],
-    },
-    {
-      id: "aq-musical-skill", key: "musicalSkill", label: "Explain Your Musical Skill",
-      type: "single-select", required: false, locked: true,
-      options: ["Excellent", "Average", "Poor"],
+      options: ["Piano", "Keyboard", "Guitar", "Drums", "Violin", "Vocal"],
+      showIf: { key: "musicalExperience", equals: ["Intermediate (Can play basic tunes)", "Advanced (Plays professionally)"] },
     },
     {
       id: "aq-how-heard", key: "howHeardAboutUs", label: "How Do You Know About ROL's School Of Music?",

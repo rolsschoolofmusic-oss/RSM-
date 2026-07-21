@@ -12,12 +12,12 @@ import { ROLES } from "@/config/constants";
 import {
   getQuestionBank, saveQuestionBank, genQuestionId, redistributeMarks,
   FAST_TRACK_TOTAL_MARKS, type FastTrackQuestion,
+  getTrackQuestionBank, saveTrackQuestionBank, type TrackTestQuestion,
 } from "@/services/screening/questionBank.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DrumStream = "little-mozarts" | "fast-track" | "joyful-track" | "creative-track";
 type Grade = "High" | "Medium" | "Low";
-type SensoryResp = "Positive" | "Neutral" | "Withdrawal" | "Distress";
 
 interface StudentOption { uid: string; name: string; studentID: string; }
 
@@ -34,7 +34,6 @@ interface DrumConfig {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GRADE_SCORE: Record<Grade, number> = { High: 5, Medium: 3, Low: 1 };
-const SENSORY_SCORE: Record<SensoryResp, number> = { Positive: 4, Neutral: 3, Withdrawal: 2, Distress: 1 };
 
 const GRADE_CFG: Record<Grade, { border: string; bg: string; color: string }> = {
   High:   { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
@@ -74,28 +73,107 @@ const JT_GENRES = [
   "Folk / World", "Carnatic", "Electronic / EDM", "Other",
 ] as const;
 
-const PRIOR_INSTRUMENTS = ["Drums / Percussion", "Piano", "Guitar", "Keyboard", "Tabla", "None"] as const;
+const DR_NOTATION_OPTIONS = ["Rhythm Notation", "Chord Charts / Tabs", "Numbers / Solfa", "None"] as const;
+const YES_SOMEWHAT_NO = ["Yes", "Somewhat", "No"] as const;
 
-const SENSORY_TESTS = [
+// ─── Track question banks (editable, mirrors Fast Track's question bank) ──────
+const GRADE_OPTIONS = ["High", "Medium", "Low"];
+const SENSORY_OPTIONS = ["Positive", "Neutral", "Withdrawal", "Distress"];
+
+const LM_QUESTIONS: TrackTestQuestion[] = [
   {
-    id: "soundImpact",
-    title: "Sound Impact Response",
-    sub: "Strike a snare drum at medium force — observe the student's immediate reaction",
-    procedure: "Strike once without warning the student. Note flinching, covering ears, leaning toward the sound, or no reaction. Repeat only if the student appears unaware.",
+    id: "lm-01", code: "LM-01", title: "Sound Impact Sensitivity",
+    sub: "Strike a practice pad once with a mallet — observe the child's immediate reaction without prompting.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Reaches out readily, curious or pleased.",
+      Neutral: "Notices without a strong reaction either way.",
+      Withdrawal: "Hesitates or pulls back, but can be coaxed.",
+      Distress: "Covers ears or reacts negatively.",
+    },
   },
   {
-    id: "vibrationResponse",
-    title: "Vibration & Tactile Sensitivity",
-    sub: "Place the student's hand on the drumhead while you tap lightly — note their response",
-    procedure: "Ask the student to feel the drum as you tap. Observe tolerance to vibration through the hand. Note hesitation, withdrawal, or curiosity.",
+    id: "lm-02", code: "LM-02", title: "Rhythmic Tapping Response",
+    sub: "Teacher taps a 4-beat pulse on a practice pad — observe if the child joins in.",
+    options: GRADE_OPTIONS,
+    optionDescs: {
+      High: "Joins the tapping with clear timing and enthusiasm.",
+      Medium: "Attempts to join with some timing drift.",
+      Low: "Little to no attempt to match the pulse.",
+    },
   },
   {
-    id: "rhythmMirror",
-    title: "Rhythmic Mirror Response",
-    sub: "Tap a 4-beat pulse on a practice pad — invite the student to mirror it",
-    procedure: "Demonstrate tap tap tap tap. Hand student a stick or invite them to use their hand. Observe whether they mirror immediately, delay, or avoid.",
+    id: "lm-03", code: "LM-03", title: "Stick Grip Comfort",
+    sub: "Hand the child a mallet or stick and observe how they hold and explore it.",
+    options: GRADE_OPTIONS,
+    optionDescs: {
+      High: "Grips comfortably, explores confidently.",
+      Medium: "Holds adequately, needs some guidance.",
+      Low: "Struggles to hold or shows little interest.",
+    },
   },
-] as const;
+];
+
+const JT_QUESTIONS: TrackTestQuestion[] = [
+  {
+    id: "jt-01", code: "JT-01", title: "Seated Posture at Kit",
+    sub: "Observe posture and comfort while seated at the drum kit.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Settles into a comfortable, relaxed seated posture quickly.",
+      Neutral: "Sits adequately, no strong signal.",
+      Withdrawal: "Some visible discomfort or repositioning.",
+      Distress: "Clear discomfort or pain, avoids sitting properly.",
+    },
+  },
+  {
+    id: "jt-02", code: "JT-02", title: "Wrist & Arm Flexibility Check",
+    sub: "Ask the student to rotate both wrists in full circles, then extend arms outward for 5 seconds. Observe range of motion and any discomfort.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Full range, held comfortably without strain.",
+      Neutral: "Adequate range, mild effort.",
+      Withdrawal: "Limited range or visible strain.",
+      Distress: "Significant difficulty or discomfort.",
+    },
+  },
+];
+
+const CT_QUESTIONS: TrackTestQuestion[] = [
+  {
+    id: "ct-01", code: "CT-01", title: "Sound Impact Response",
+    sub: "Strike a snare drum at medium force — observe the student's immediate reaction. Strike once without warning; note flinching, covering ears, leaning toward the sound, or no reaction.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Engaged, curious, or visibly enjoys the sound.",
+      Neutral: "Attentive without a strong reaction.",
+      Withdrawal: "Mild discomfort, looks away, covers ears briefly.",
+      Distress: "Strong aversive reaction, needs the sound stopped.",
+    },
+  },
+  {
+    id: "ct-02", code: "CT-02", title: "Vibration & Tactile Sensitivity",
+    sub: "Place the student's hand on the drumhead while you tap lightly — note their response. Observe tolerance to vibration through the hand; note hesitation, withdrawal, or curiosity.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Reaches out readily, curious or pleased.",
+      Neutral: "Tolerates the vibration without a strong reaction.",
+      Withdrawal: "Hesitates or pulls back, but can be coaxed.",
+      Distress: "Refuses contact or reacts negatively.",
+    },
+  },
+  {
+    id: "ct-03", code: "CT-03", title: "Rhythmic Mirror Response",
+    sub: "Tap a 4-beat pulse on a practice pad — invite the student to mirror it. Hand the student a stick or invite them to use their hand; observe whether they mirror immediately, delay, or avoid.",
+    options: SENSORY_OPTIONS,
+    optionDescs: {
+      Positive: "Mirrors the pulse readily and stays in sync.",
+      Neutral: "Joins in with inconsistent timing.",
+      Withdrawal: "Delayed or minimal participation.",
+      Distress: "Avoids or ignores the pattern entirely.",
+    },
+  },
+];
 
 const DRUM_TESTS: FastTrackQuestion[] = [
   {
@@ -146,8 +224,8 @@ function computeFtConfig(all: Grade[]): DrumConfig {
   };
 }
 
-function computeJtConfig(posture: SensoryResp | null, flex: SensoryResp | null): DrumConfig {
-  const low = posture === "Distress" || flex === "Distress" || posture === "Withdrawal" || flex === "Withdrawal";
+function computeJtConfig(answers: string[]): DrumConfig {
+  const low = answers.some(a => a === "Distress" || a === "Withdrawal");
   return low
     ? {
         track: "Delta Slab", syllabusStrategy: "Gentle Engagement — Comfort-First Approach",
@@ -278,6 +356,101 @@ function GradeCard({ question, value, onChange, accent, editable, onQuestionChan
   );
 }
 
+const OPTION_COLORS: Record<string, { border: string; bg: string; color: string }> = {
+  High:       { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
+  Medium:     { border: "#a05a2c", bg: "#f7ece1", color: "#7a4a1f" },
+  Low:        { border: "#dc2626", bg: "#fef2f2", color: "#991b1b" },
+  Positive:   { border: "#16a34a", bg: "#f0fdf4", color: "#15803d" },
+  Neutral:    { border: "#2563eb", bg: "#eff6ff", color: "#1d4ed8" },
+  Withdrawal: { border: "#a05a2c", bg: "#f7ece1", color: "#7a4a1f" },
+  Distress:   { border: "#dc2626", bg: "#fef2f2", color: "#991b1b" },
+};
+function optionColor(opt: string) {
+  return OPTION_COLORS[opt] ?? { border: "#6b7280", bg: "#f3f4f6", color: "#374151" };
+}
+
+// ─── Generic editable test card (Little Mozarts / Joyful Track / Creative Track) ──
+function TestCard({ question, value, onChange, accent, editable, onQuestionChange, onRemove, canRemove }: {
+  question: TrackTestQuestion;
+  value: string | null; onChange: (opt: string) => void; accent: string;
+  editable?: boolean;
+  onQuestionChange?: (q: TrackTestQuestion) => void;
+  onRemove?: () => void;
+  canRemove?: boolean;
+}) {
+  const { code, title, sub, options, optionDescs } = question;
+
+  if (editable) {
+    const setOptionDesc = (opt: string, val: string) => {
+      onQuestionChange?.({ ...question, optionDescs: { ...optionDescs, [opt]: val } });
+    };
+    return (
+      <div style={{ ...card, gridColumn: "span 12", border: `1.5px dashed ${accent}55` }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }} className="scr-sensory-grid">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <input value={code} onChange={e => onQuestionChange?.({ ...question, code: e.target.value })}
+              placeholder="Code" style={{ ...inputStyle, fontSize: 11, fontWeight: 800, padding: "5px 9px", width: 90 }} />
+            <input value={title} onChange={e => onQuestionChange?.({ ...question, title: e.target.value })}
+              placeholder="Question title" style={{ ...inputStyle, fontWeight: 700, fontSize: 13 }} />
+            <textarea value={sub} onChange={e => onQuestionChange?.({ ...question, sub: e.target.value })}
+              placeholder="Instructions / setup" rows={3} style={{ ...inputStyle, resize: "vertical", fontSize: 12, lineHeight: 1.5 }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {options.map(opt => (
+              <div key={opt} style={{ border: "1.5px solid #f0f0f0", borderRadius: 10, padding: "8px 10px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 5 }}>{opt}</div>
+                <textarea value={optionDescs[opt] ?? ""} rows={2}
+                  onChange={e => setOptionDesc(opt, e.target.value)}
+                  style={{ ...inputStyle, fontSize: 11, resize: "vertical", padding: "6px 8px", lineHeight: 1.4 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        {onRemove && (
+          <button type="button" onClick={onRemove} disabled={!canRemove}
+            style={{ marginTop: 10, width: "100%", padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca",
+              background: canRemove ? "#fef2f2" : "#f9fafb", color: canRemove ? "#dc2626" : "#d1d5db",
+              fontSize: 11, fontWeight: 700, cursor: canRemove ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+            🗑 Remove Question
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...card, gridColumn: "span 12" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }} className="scr-sensory-grid">
+        <div>
+          <span style={{ fontSize: 10, fontWeight: 800, color: accent, letterSpacing: "0.1em",
+            textTransform: "uppercase", background: `${accent}18`, padding: "2px 8px", borderRadius: 6 }}>
+            {code}
+          </span>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#111", marginTop: 8 }}>{title}</div>
+          <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{sub}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, justifyContent: "center" }}>
+          {options.map(opt => {
+            const sel = value === opt;
+            const c = optionColor(opt);
+            return (
+              <button key={opt} onClick={() => onChange(opt)}
+                style={{ textAlign: "left", border: `1.5px solid ${sel ? c.border : "#f0f0f0"}`,
+                  background: sel ? c.bg : "#fafafa", borderRadius: 10, padding: "9px 14px",
+                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: sel ? c.color : "#374151" }}>{opt}</div>
+                {optionDescs[opt] && (
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2, lineHeight: 1.4 }}>{optionDescs[opt]}</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Stepper({ steps, current, accent }: { steps: string[]; current: number; accent: string }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", marginBottom: 28 }}>
@@ -378,15 +551,17 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
   const [lm_attention,        setLmAttention]   = useState("");
   const [lm_interactionStyle, setLmInteraction] = useState("");
   const [lm_grossMotor,       setLmGrossMotor]  = useState("");
-  const [lm_tactile,          setLmTactile]     = useState<SensoryResp | null>(null);
-  const [lm_rhythm,           setLmRhythm]      = useState<Grade | null>(null);
-  const [lm_stickGrip,        setLmGrip]        = useState<Grade | null>(null);
+  const [lm_questions,   setLmQuestions]   = useState<TrackTestQuestion[]>(LM_QUESTIONS);
+  const [lmAnswers,      setLmAnswers]     = useState<Record<string, string>>({});
+  const [lmEditMode,     setLmEditMode]    = useState(false);
+  const [lmDraftQuestions, setLmDraftQuestions] = useState<TrackTestQuestion[]>(LM_QUESTIONS);
+  const [lmBankSaving,   setLmBankSaving]  = useState(false);
 
   // ── FT state ──────────────────────────────────────────────────────────────
-  const [ft_priorInstruments, setFtPrior]   = useState<string[]>([]);
+  const [ft_notation,         setFtNotation] = useState<string[]>([]);
   const [ft_performanceGoal,  setFtGoal]    = useState("");
-  const [ft_drumLevel,        setFtLevel]   = useState("");
-  const [ft_sightReading,     setFtSight]   = useState("");
+  const [ft_rhythmSense,      setFtRhythm]  = useState("");
+  const [ft_earSense,         setFtEar]     = useState("");
   const [ft_questions,   setFtQuestions]   = useState<FastTrackQuestion[]>(() => redistributeMarks(DRUM_TESTS));
   const [ftGradeMap,     setFtGradeMap]    = useState<Record<string, Grade | null>>({});
   const [ftEditMode,     setFtEditMode]    = useState(false);
@@ -398,17 +573,21 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
   const [jt_motivation,      setJtMotivation] = useState("");
   const [jt_practiceTime,    setJtPractice]   = useState("");
   const [jt_physicalNotes,   setJtPhysical]   = useState("");
-  const [jt_posture,         setJtPosture]    = useState<SensoryResp | null>(null);
-  const [jt_handFlexibility, setJtFlex]       = useState<SensoryResp | null>(null);
-  const [jt_visualMemory,    setJtVisual]     = useState<Grade | null>(null);
+  const [jt_questions,   setJtQuestions]   = useState<TrackTestQuestion[]>(JT_QUESTIONS);
+  const [jtAnswers,      setJtAnswers]     = useState<Record<string, string>>({});
+  const [jtEditMode,     setJtEditMode]    = useState(false);
+  const [jtDraftQuestions, setJtDraftQuestions] = useState<TrackTestQuestion[]>(JT_QUESTIONS);
+  const [jtBankSaving,   setJtBankSaving]  = useState(false);
 
   // ── CT state ──────────────────────────────────────────────────────────────
   const [ct_emotionalTriggers, setCtTriggers]  = useState("");
   const [ct_soundThreshold,    setCtSound]     = useState("");
   const [ct_visualMods,        setCtVisual]    = useState("");
-  const [ct_soundImpact,       setCtSoundImpact]  = useState<SensoryResp | null>(null);
-  const [ct_vibration,         setCtVibration]    = useState<SensoryResp | null>(null);
-  const [ct_rhythmMirror,      setCtRhythm]       = useState<SensoryResp | null>(null);
+  const [ct_questions,   setCtQuestions]   = useState<TrackTestQuestion[]>(CT_QUESTIONS);
+  const [ctAnswers,      setCtAnswers]     = useState<Record<string, string>>({});
+  const [ctEditMode,     setCtEditMode]    = useState(false);
+  const [ctDraftQuestions, setCtDraftQuestions] = useState<TrackTestQuestion[]>(CT_QUESTIONS);
+  const [ctBankSaving,   setCtBankSaving]  = useState(false);
   const [ct_metronomeEnabled,  setCtMetronome] = useState(false);
   const [ct_metronomeBpm,      setCtBpm]       = useState(60);
   const [ct_stickType,         setCtStick]     = useState<DrumConfig["stickType"]>("Mallets");
@@ -419,25 +598,34 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
     setStudentName(""); setLinkedStudent(null); setShowDropdown(false);
     setSaved(false); setSaveErr(""); setSaving(false);
     setLmDevFocus(""); setLmAttention(""); setLmInteraction(""); setLmGrossMotor("");
-    setLmTactile(null); setLmRhythm(null); setLmGrip(null);
-    setFtPrior([]); setFtGoal(""); setFtLevel(""); setFtSight("");
-    setFtGradeMap({});
+    setLmAnswers({}); setLmEditMode(false);
+    setFtNotation([]); setFtGoal(""); setFtRhythm(""); setFtEar("");
+    setFtGradeMap({}); setFtEditMode(false);
     setJtGenres([]); setJtMotivation(""); setJtPractice(""); setJtPhysical("");
-    setJtPosture(null); setJtFlex(null); setJtVisual(null);
+    setJtAnswers({}); setJtEditMode(false);
     setCtTriggers(""); setCtSound(""); setCtVisual("");
-    setCtSoundImpact(null); setCtVibration(null); setCtRhythm(null);
+    setCtAnswers({}); setCtEditMode(false);
     setCtMetronome(false); setCtBpm(60); setCtStick("Mallets");
   }, []);
 
   useEffect(() => { resetAll(stream); }, [stream, resetAll]);
 
-  // ── Load Fast Track question bank (falls back to defaults if unsaved) ───────
+  // ── Load question banks (falls back to defaults if unsaved) ─────────────────
   useEffect(() => {
     getQuestionBank("drums").then(qs => {
       if (qs && qs.length > 0) {
         const balanced = redistributeMarks(qs);
         setFtQuestions(balanced); setFtDraftQuestions(balanced);
       }
+    }).catch(() => {});
+    getTrackQuestionBank("drums", "lmQuestions").then(qs => {
+      if (qs && qs.length > 0) { setLmQuestions(qs); setLmDraftQuestions(qs); }
+    }).catch(() => {});
+    getTrackQuestionBank("drums", "jtQuestions").then(qs => {
+      if (qs && qs.length > 0) { setJtQuestions(qs); setJtDraftQuestions(qs); }
+    }).catch(() => {});
+    getTrackQuestionBank("drums", "ctQuestions").then(qs => {
+      if (qs && qs.length > 0) { setCtQuestions(qs); setCtDraftQuestions(qs); }
     }).catch(() => {});
   }, []);
 
@@ -484,7 +672,7 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
   const derivedConfig: DrumConfig | null = (() => {
     if (stream === "little-mozarts") return lmConfig();
     if (stream === "fast-track" && ftAllAnswered) return computeFtConfig(ftAnsweredGrades);
-    if (stream === "joyful-track") return computeJtConfig(jt_posture, jt_handFlexibility);
+    if (stream === "joyful-track") return computeJtConfig(Object.values(jtAnswers));
     if (stream === "creative-track") return ctConfig(ct_metronomeEnabled, ct_metronomeBpm, ct_stickType);
     return null;
   })();
@@ -503,10 +691,7 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
       };
       if (stream === "little-mozarts") Object.assign(payload, {
         lm_devFocus, lm_attention, lm_interactionStyle, lm_grossMotor,
-        lm_tactile, lm_rhythm, lm_stickGrip: lm_stickGrip,
-        lm_tactileScore: lm_tactile   ? SENSORY_SCORE[lm_tactile] : null,
-        lm_rhythmScore:  lm_rhythm    ? GRADE_SCORE[lm_rhythm]    : null,
-        lm_gripScore:    lm_stickGrip ? GRADE_SCORE[lm_stickGrip] : null,
+        lm_answers: lm_questions.map(q => ({ questionId: q.id, code: q.code, title: q.title, answer: lmAnswers[q.id] ?? null })),
       });
       if (stream === "fast-track") {
         const gradeAnswers = ft_questions.map(q => {
@@ -515,7 +700,7 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
           return { questionId: q.id, code: q.code, title: q.title, grade: g, marks: rub?.marks ?? 0 };
         });
         Object.assign(payload, {
-          ft_priorInstruments, ft_performanceGoal, ft_drumLevel, ft_sightReading,
+          ft_notation, ft_performanceGoal, ft_rhythmSense, ft_earSense,
           ft_gradeAnswers: gradeAnswers,
           ft_totalScore: gradeAnswers.reduce((a, g) => a + g.marks, 0),
           ft_maxScore: ft_questions.reduce((a, q) => a + Math.max(...q.rubric.map(r => r.marks)), 0),
@@ -523,11 +708,11 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
       }
       if (stream === "joyful-track") Object.assign(payload, {
         jt_genres, jt_motivation, jt_practiceTime, jt_physicalNotes,
-        jt_posture, jt_handFlexibility, jt_visualMemory,
+        jt_answers: jt_questions.map(q => ({ questionId: q.id, code: q.code, title: q.title, answer: jtAnswers[q.id] ?? null })),
       });
       if (stream === "creative-track") Object.assign(payload, {
         ct_emotionalTriggers, ct_soundThreshold, ct_visualMods,
-        ct_soundImpact, ct_vibration, ct_rhythmMirror,
+        ct_answers: ct_questions.map(q => ({ questionId: q.id, code: q.code, title: q.title, answer: ctAnswers[q.id] ?? null })),
         ct_metronomeEnabled, ct_metronomeBpm, ct_stickType,
       });
       await addDoc(collection(db, "drum-screenings"), payload);
@@ -592,48 +777,6 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
     background: ACCENT, color: "#fff", transition: "opacity 0.15s",
   };
   const btnSec: React.CSSProperties = { ...btnPrimary, background: "#f3f4f6", color: "#374151" };
-
-  const sensoryColors: Record<SensoryResp, string> = {
-    Positive: "#16a34a", Neutral: "#2563eb", Withdrawal: "#a05a2c", Distress: "#dc2626",
-  };
-
-  function SensoryPicker({ value, onChange }: { value: SensoryResp | null; onChange: (r: SensoryResp) => void }) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-          const sel = value === opt; const c = sensoryColors[opt];
-          return (
-            <button key={opt} onClick={() => onChange(opt)}
-              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
-                border: `1.5px solid ${sel ? c : "#f0f0f0"}`, background: sel ? `${c}14` : "#fafafa",
-                borderRadius: 10, padding: "9px 12px", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
-              <div style={{ width: 9, height: 9, borderRadius: "50%", background: sel ? c : "#d1d5db", flexShrink: 0 }} />
-              <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? c : "#374151" }}>{opt}</span>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function SensoryRow({ value, onChange }: { value: SensoryResp | null; onChange: (r: SensoryResp) => void }) {
-    return (
-      <div style={{ display: "flex", gap: 6 }}>
-        {(["Positive", "Neutral", "Withdrawal", "Distress"] as SensoryResp[]).map(opt => {
-          const sel = value === opt; const c = sensoryColors[opt];
-          return (
-            <button key={opt} onClick={() => onChange(opt)}
-              style={{ flex: 1, padding: "6px 4px", borderRadius: 8,
-                border: `1.5px solid ${sel ? c : "#f0f0f0"}`, background: sel ? `${c}14` : "#fafafa",
-                fontSize: 10, fontWeight: sel ? 700 : 500, color: sel ? c : "#6b7280",
-                cursor: "pointer", fontFamily: "inherit" }}>
-              {opt}
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
 
   function ConfigRows({ cfg }: { cfg: DrumConfig }) {
     return (
@@ -735,6 +878,39 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
           })}
         </div>
 
+        {isAdmin && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            {stream === "little-mozarts" && !lmEditMode && (
+              <button type="button"
+                onClick={() => { setLmDraftQuestions(lm_questions); setLmEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+            {stream === "fast-track" && !ftEditMode && (
+              <button type="button"
+                onClick={() => { setFtDraftQuestions(ft_questions); setFtEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+            {stream === "joyful-track" && !jtEditMode && (
+              <button type="button"
+                onClick={() => { setJtDraftQuestions(jt_questions); setJtEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+            {stream === "creative-track" && !ctEditMode && (
+              <button type="button"
+                onClick={() => { setCtDraftQuestions(ct_questions); setCtEditMode(true); setStep(3); }}
+                style={{ ...btnSec, padding: "8px 16px", fontSize: 12 }}>
+                ✎ Edit Screening Questions
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Stepper */}
         <Stepper steps={stepLabels} current={step} accent={ACCENT} />
 
@@ -795,7 +971,7 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* LITTLE MOZARTS */}
             {stream === "little-mozarts" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
+                <div style={{ ...card, gridColumn: "span 12" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Early Development Profile
                   </div>
@@ -810,16 +986,6 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
                       <input value={val} onChange={e => set(e.target.value)} placeholder={ph} style={inputStyle} />
                     </div>
                   ))}
-                </div>
-
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Sound Impact Sensitivity
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
-                    Strike a practice pad once with a mallet — observe the child's immediate reaction without prompting.
-                  </div>
-                  <SensoryPicker value={lm_tactile} onChange={setLmTactile} />
                 </div>
 
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
@@ -837,39 +1003,38 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
                     Background Information
                   </div>
                   <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Prior Instruments</label>
+                    <label style={labelStyle}>Notation Familiarity</label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                      {PRIOR_INSTRUMENTS.map(inst => {
-                        const sel = ft_priorInstruments.includes(inst);
+                      {DR_NOTATION_OPTIONS.map(opt => {
+                        const sel = ft_notation.includes(opt);
                         return (
-                          <button key={inst}
-                            onClick={() => setFtPrior(p => sel ? p.filter(x => x !== inst) : [...p, inst])}
+                          <button key={opt}
+                            onClick={() => setFtNotation(p => sel ? p.filter(x => x !== opt) : [...p, opt])}
                             style={{ padding: "6px 12px", borderRadius: 8,
                               border: `1.5px solid ${sel ? ACCENT : "#e5e7eb"}`,
                               background: sel ? `${ACCENT}18` : "#fafafa",
                               color: sel ? ACCENT : "#6b7280",
                               fontSize: 12, fontWeight: sel ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
-                            {inst}
+                            {opt}
                           </button>
                         );
                       })}
                     </div>
                   </div>
                   <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Self-Reported Drum Level</label>
-                    <select value={ft_drumLevel} onChange={e => setFtLevel(e.target.value)}
+                    <label style={labelStyle}>Can Keep a Steady Beat / Rhythm</label>
+                    <select value={ft_rhythmSense} onChange={e => setFtRhythm(e.target.value)}
                       style={{ ...inputStyle, appearance: "none" }}>
-                      <option value="">Select level…</option>
-                      {["Complete Beginner", "Beginner", "Elementary", "Intermediate", "Advanced"].map(v =>
-                        <option key={v} value={v}>{v}</option>)}
+                      <option value="">Select…</option>
+                      {YES_SOMEWHAT_NO.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={labelStyle}>Sheet Music / Notation Ability</label>
-                    <select value={ft_sightReading} onChange={e => setFtSight(e.target.value)}
+                    <label style={labelStyle}>Notices When a Note Sounds Out of Tune</label>
+                    <select value={ft_earSense} onChange={e => setFtEar(e.target.value)}
                       style={{ ...inputStyle, appearance: "none" }}>
                       <option value="">Select…</option>
-                      {["None", "Some", "Regular"].map(v => <option key={v} value={v}>{v}</option>)}
+                      {YES_SOMEWHAT_NO.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                 </div>
@@ -896,8 +1061,8 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
 
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(1)} style={btnSec}>← Back</button>
-                  <button onClick={() => setStep(3)} disabled={!ft_drumLevel || !ft_performanceGoal}
-                    style={{ ...btnPrimary, opacity: !ft_drumLevel || !ft_performanceGoal ? 0.4 : 1 }}>
+                  <button onClick={() => setStep(3)} disabled={!ft_rhythmSense || !ft_performanceGoal}
+                    style={{ ...btnPrimary, opacity: !ft_rhythmSense || !ft_performanceGoal ? 0.4 : 1 }}>
                     Continue →
                   </button>
                 </div>
@@ -951,16 +1116,10 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Physical Considerations
                   </div>
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={labelStyle}>Physical Notes</label>
-                    <textarea value={jt_physicalNotes} onChange={e => setJtPhysical(e.target.value)}
-                      rows={3} placeholder="Shoulder/wrist issues, grip strength, stamina, joint mobility…"
-                      style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, marginBottom: 8 }}>
-                    Seated Posture at Kit
-                  </div>
-                  <SensoryPicker value={jt_posture} onChange={setJtPosture} />
+                  <label style={labelStyle}>Physical Notes</label>
+                  <textarea value={jt_physicalNotes} onChange={e => setJtPhysical(e.target.value)}
+                    rows={3} placeholder="Shoulder/wrist issues, grip strength, stamina, joint mobility…"
+                    style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
                 </div>
 
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
@@ -973,7 +1132,7 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* CREATIVE TRACK */}
             {stream === "creative-track" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
+                <div style={{ ...card, gridColumn: "span 12" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Sensory Profile
                   </div>
@@ -993,27 +1152,6 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
                   ))}
                 </div>
 
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Drum Sensory Tests
-                  </div>
-                  {SENSORY_TESTS.map(({ id, title, sub }) => {
-                    const val = id === "soundImpact" ? ct_soundImpact
-                              : id === "vibrationResponse" ? ct_vibration
-                              : ct_rhythmMirror;
-                    const set = id === "soundImpact" ? setCtSoundImpact
-                              : id === "vibrationResponse" ? setCtVibration
-                              : setCtRhythm;
-                    return (
-                      <div key={id} style={{ marginBottom: 18 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#111", marginBottom: 2 }}>{title}</div>
-                        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>{sub}</div>
-                        <SensoryRow value={val} onChange={set} />
-                      </div>
-                    );
-                  })}
-                </div>
-
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(1)} style={btnSec}>← Back</button>
                   <button onClick={() => setStep(3)} style={btnPrimary}>Continue →</button>
@@ -1029,58 +1167,63 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* LITTLE MOZARTS */}
             {stream === "little-mozarts" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Early Drum Assessment
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {!lmEditMode ? (
+                      <button type="button" onClick={() => { setLmDraftQuestions(lm_questions); setLmEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => setLmDraftQuestions(qs => [...qs, {
+                            id: genQuestionId("lm"), code: `LM-${String(qs.length + 1).padStart(2, "0")}`,
+                            title: "New Question", sub: "", options: GRADE_OPTIONS, optionDescs: {},
+                          }])} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={() => { setLmDraftQuestions(lm_questions); setLmEditMode(false); }}
+                          disabled={lmBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" disabled={lmBankSaving}
+                          onClick={async () => {
+                            setLmBankSaving(true);
+                            try {
+                              await saveTrackQuestionBank("drums", "lmQuestions", lmDraftQuestions, user?.uid ?? "unknown");
+                              setLmQuestions(lmDraftQuestions); setLmAnswers({}); setLmEditMode(false);
+                            } finally { setLmBankSaving(false); }
+                          }}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: lmBankSaving ? 0.6 : 1 }}>
+                          {lmBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ ...labelStyle, marginBottom: 10 }}>Rhythmic Tapping Response</label>
-                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10, lineHeight: 1.6 }}>
-                      Teacher taps a 4-beat pulse on a practice pad — observe if the child joins in.
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {(["High", "Medium", "Low"] as Grade[]).map(g => {
-                        const sel = lm_rhythm === g; const cfg = GRADE_CFG[g];
-                        return (
-                          <button key={g} onClick={() => setLmRhythm(g)}
-                            style={{ textAlign: "left", border: `1.5px solid ${sel ? cfg.border : "#f0f0f0"}`,
-                              background: sel ? cfg.bg : "#fafafa", borderRadius: 10,
-                              padding: "9px 14px", cursor: "pointer", fontFamily: "inherit" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : "#374151" }}>{g}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ ...labelStyle, marginBottom: 10 }}>Stick Grip Comfort</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {(["High", "Medium", "Low"] as Grade[]).map(g => {
-                        const sel = lm_stickGrip === g; const cfg = GRADE_CFG[g];
-                        return (
-                          <button key={g} onClick={() => setLmGrip(g)}
-                            style={{ textAlign: "left", border: `1.5px solid ${sel ? cfg.border : "#f0f0f0"}`,
-                              background: sel ? cfg.bg : "#fafafa", borderRadius: 10,
-                              padding: "9px 14px", cursor: "pointer", fontFamily: "inherit" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : "#374151" }}>{g}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 14 }}>
-                    Recommended Config
-                  </div>
-                  <ConfigRows cfg={lmConfig()} />
-                </div>
+                {lmEditMode
+                  ? lmDraftQuestions.map(q => (
+                      <TestCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => setLmDraftQuestions(qs => qs.map(x => x.id === q.id ? updated : x))}
+                        onRemove={() => setLmDraftQuestions(qs => qs.length > 1 ? qs.filter(x => x.id !== q.id) : qs)}
+                        canRemove={lmDraftQuestions.length > 1} />
+                    ))
+                  : lm_questions.map(q => (
+                      <TestCard key={q.id} question={q} accent={ACCENT}
+                        value={lmAnswers[q.id] ?? null}
+                        onChange={opt => setLmAnswers(prev => ({ ...prev, [q.id]: opt }))} />
+                    ))}
 
-                {renderSaveRow()}
-                <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
-                  <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
-                </div>
+                {!lmEditMode && (
+                  <div style={{ ...card, gridColumn: "span 12" }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 14 }}>
+                      Recommended Config
+                    </div>
+                    <ConfigRows cfg={lmConfig()} />
+                  </div>
+                )}
+
+                {!lmEditMode && renderSaveRow()}
+                {!lmEditMode && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
+                    <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1177,47 +1320,125 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
             {/* JOYFUL TRACK */}
             {stream === "joyful-track" && (
               <div style={grid12} className="scr-grid">
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Wrist & Arm Flexibility Check
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14, lineHeight: 1.6 }}>
-                    Ask the student to rotate both wrists in full circles, then extend arms outward for 5 seconds.
-                    Observe range of motion and any discomfort.
-                  </div>
-                  <SensoryPicker value={jt_handFlexibility} onChange={setJtFlex} />
-                </div>
-
-                <div style={{ ...card, gridColumn: "span 6" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
-                    Recommended Config
-                  </div>
-                  {(() => {
-                    const cfg = computeJtConfig(jt_posture, jt_handFlexibility);
-                    const sc2 = SLAB_CFG[cfg.track];
-                    return (
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {!jtEditMode ? (
+                      <button type="button" onClick={() => { setJtDraftQuestions(jt_questions); setJtEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
                       <>
-                        <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 12,
-                          background: sc2.bg, border: `1.5px solid ${sc2.border}` }}>
-                          <div style={{ fontWeight: 800, fontSize: 16, color: sc2.color }}>{cfg.track}</div>
-                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{cfg.syllabusStrategy}</div>
-                        </div>
-                        <ConfigRows cfg={cfg} />
+                        <button type="button" onClick={() => setJtDraftQuestions(qs => [...qs, {
+                            id: genQuestionId("jt"), code: `JT-${String(qs.length + 1).padStart(2, "0")}`,
+                            title: "New Question", sub: "", options: SENSORY_OPTIONS, optionDescs: {},
+                          }])} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={() => { setJtDraftQuestions(jt_questions); setJtEditMode(false); }}
+                          disabled={jtBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" disabled={jtBankSaving}
+                          onClick={async () => {
+                            setJtBankSaving(true);
+                            try {
+                              await saveTrackQuestionBank("drums", "jtQuestions", jtDraftQuestions, user?.uid ?? "unknown");
+                              setJtQuestions(jtDraftQuestions); setJtAnswers({}); setJtEditMode(false);
+                            } finally { setJtBankSaving(false); }
+                          }}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: jtBankSaving ? 0.6 : 1 }}>
+                          {jtBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
                       </>
-                    );
-                  })()}
-                </div>
+                    )}
+                  </div>
+                )}
 
-                {renderSaveRow()}
-                <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
-                  <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
-                </div>
+                {jtEditMode
+                  ? jtDraftQuestions.map(q => (
+                      <TestCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => setJtDraftQuestions(qs => qs.map(x => x.id === q.id ? updated : x))}
+                        onRemove={() => setJtDraftQuestions(qs => qs.length > 1 ? qs.filter(x => x.id !== q.id) : qs)}
+                        canRemove={jtDraftQuestions.length > 1} />
+                    ))
+                  : jt_questions.map(q => (
+                      <TestCard key={q.id} question={q} accent={ACCENT}
+                        value={jtAnswers[q.id] ?? null}
+                        onChange={opt => setJtAnswers(prev => ({ ...prev, [q.id]: opt }))} />
+                    ))}
+
+                {!jtEditMode && (
+                  <div style={{ ...card, gridColumn: "span 12" }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
+                      Recommended Config
+                    </div>
+                    {(() => {
+                      const cfg = computeJtConfig(Object.values(jtAnswers));
+                      const sc2 = SLAB_CFG[cfg.track];
+                      return (
+                        <>
+                          <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 12,
+                            background: sc2.bg, border: `1.5px solid ${sc2.border}` }}>
+                            <div style={{ fontWeight: 800, fontSize: 16, color: sc2.color }}>{cfg.track}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{cfg.syllabusStrategy}</div>
+                          </div>
+                          <ConfigRows cfg={cfg} />
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {!jtEditMode && renderSaveRow()}
+                {!jtEditMode && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
+                    <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* CREATIVE TRACK */}
             {stream === "creative-track" && (
               <div style={grid12} className="scr-grid">
+                {isAdmin && (
+                  <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {!ctEditMode ? (
+                      <button type="button" onClick={() => { setCtDraftQuestions(ct_questions); setCtEditMode(true); }}
+                        style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>✎ Edit Questions</button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => setCtDraftQuestions(qs => [...qs, {
+                            id: genQuestionId("ct"), code: `CT-${String(qs.length + 1).padStart(2, "0")}`,
+                            title: "New Question", sub: "", options: SENSORY_OPTIONS, optionDescs: {},
+                          }])} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>+ Add Question</button>
+                        <button type="button" onClick={() => { setCtDraftQuestions(ct_questions); setCtEditMode(false); }}
+                          disabled={ctBankSaving} style={{ ...btnSec, padding: "7px 14px", fontSize: 12 }}>Cancel</button>
+                        <button type="button" disabled={ctBankSaving}
+                          onClick={async () => {
+                            setCtBankSaving(true);
+                            try {
+                              await saveTrackQuestionBank("drums", "ctQuestions", ctDraftQuestions, user?.uid ?? "unknown");
+                              setCtQuestions(ctDraftQuestions); setCtAnswers({}); setCtEditMode(false);
+                            } finally { setCtBankSaving(false); }
+                          }}
+                          style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, opacity: ctBankSaving ? 0.6 : 1 }}>
+                          {ctBankSaving ? "Saving…" : "💾 Save Questions"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {ctEditMode
+                  ? ctDraftQuestions.map(q => (
+                      <TestCard key={q.id} question={q} value={null} onChange={() => {}} accent={ACCENT}
+                        editable onQuestionChange={updated => setCtDraftQuestions(qs => qs.map(x => x.id === q.id ? updated : x))}
+                        onRemove={() => setCtDraftQuestions(qs => qs.length > 1 ? qs.filter(x => x.id !== q.id) : qs)}
+                        canRemove={ctDraftQuestions.length > 1} />
+                    ))
+                  : ct_questions.map(q => (
+                      <TestCard key={q.id} question={q} accent={ACCENT}
+                        value={ctAnswers[q.id] ?? null}
+                        onChange={opt => setCtAnswers(prev => ({ ...prev, [q.id]: opt }))} />
+                    ))}
+
+                {ctEditMode ? null : <>
                 <div style={{ ...card, gridColumn: "span 7" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#111", marginBottom: 16 }}>
                     Teacher Overrides
@@ -1289,6 +1510,7 @@ export function DrumScreeningContent({ onBack }: { onBack?: () => void }) {
                 <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-start" }}>
                   <button onClick={() => setStep(2)} style={btnSec}>← Back</button>
                 </div>
+                </>}
               </div>
             )}
           </>

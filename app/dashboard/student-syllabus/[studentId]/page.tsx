@@ -30,7 +30,7 @@ export default function StudentSyllabusPage({
 }) {
   const { studentId } = params;
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT]} sectionKey="students">
       <StudentSyllabusContent studentId={studentId} />
     </ProtectedRoute>
   );

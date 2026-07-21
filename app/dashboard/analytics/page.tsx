@@ -106,7 +106,7 @@ function barColor(val: number, max: number): string {
 
 export default function AnalyticsPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="analytics">
       <AnalyticsContent />
     </ProtectedRoute>
   );

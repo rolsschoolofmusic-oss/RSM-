@@ -1,4 +1,5 @@
 import { ROLES, USER_STATUS } from "@/config/constants";
+import { ADMIN_SECTIONS } from "@/config/adminSections";
 import type { User, Role } from "@/types";
 
 export function isActiveUser(user: User): boolean {
@@ -47,4 +48,18 @@ export function validateUserAccess(user: User | null): boolean {
 export function isRoleAllowed(user: User | null, roles: Role[]): boolean {
   if (!user) return false;
   return roles.includes(user.role);
+}
+
+/**
+ * Returns true unless the user is an `admin` who has been explicitly
+ * restricted away from `sectionKey`. super_admin/teacher/student always
+ * pass — this only ever narrows access for role === ROLES.ADMIN.
+ * Undefined `permissions` (never configured) means full access.
+ */
+export function hasSectionAccess(user: User | null, sectionKey?: string): boolean {
+  if (!sectionKey || !user || user.role !== ROLES.ADMIN) return true;
+  const section = ADMIN_SECTIONS.find(s => s.key === sectionKey);
+  if (section?.alwaysOn) return true;
+  const perms = "permissions" in user ? user.permissions : undefined;
+  return perms === undefined || perms.includes(sectionKey);
 }

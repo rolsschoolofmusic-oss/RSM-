@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { clearPersistedSession, signOut } from "@/services/firebase/auth.service";
 import { ROLES } from "@/config/constants";
+import { hasSectionAccess } from "@/lib/validators/auth.validators";
 
 // ─── Alert count hook ──────────────────────────────────────────────────────────
 function useAlertCount(enabled: boolean): number {
@@ -41,6 +42,8 @@ interface NavItem {
   href:         string | ((uid: string, role: string) => string);
   matchPrefix?: string;
   roles:        string[];
+  /** Admin-only restriction key (see config/adminSections.ts). No-op for other roles. */
+  sectionKey?:  string;
 }
 
 interface NavGroup {
@@ -50,14 +53,16 @@ interface NavGroup {
 }
 
 const NAV_TOP: NavItem[] = [
-  // Admin / Super Admin
-  { label: "Center Suite", icon: "⊞", href: "/dashboard",            roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-  { label: "Centers",      icon: "🏫", href: "/dashboard/centers",    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-  { label: "Teachers",     icon: "👥", href: "/dashboard/teachers",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  // Super Admin only
+  { label: "Center Suite", icon: "⊞", href: "/dashboard",            roles: [ROLES.SUPER_ADMIN] },
+  // Admin only — their own scoped landing dashboard, not further restrictable
+  { label: "Admin Suite",  icon: "⊞", href: "/dashboard/admin-suite", roles: [ROLES.ADMIN] },
+  { label: "Centers",      icon: "🏫", href: "/dashboard/centers",    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "centers" },
+  { label: "Teachers",     icon: "👥", href: "/dashboard/teachers",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "teachers" },
   { label: "Admins",       icon: "👤", href: "/dashboard/admins",     roles: [ROLES.SUPER_ADMIN] },
-  { label: "Students",     icon: "🎓", href: "/dashboard/students",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-  { label: "Attendance",   icon: "✓",  href: "/dashboard/attendance", roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-  { label: "Syllabus",     icon: "📚", href: "/dashboard/syllabus",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  { label: "Students",     icon: "🎓", href: "/dashboard/students",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "students" },
+  { label: "Attendance",   icon: "✓",  href: "/dashboard/attendance", roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "attendance" },
+  { label: "Syllabus",     icon: "📚", href: "/dashboard/syllabus",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "syllabus" },
   // Teacher
   { label: "Faculty Suite", icon: "🎓", href: "/dashboard/teacher",    roles: [ROLES.TEACHER], matchPrefix: "/dashboard/teacher" },
   { label: "My Classes",    icon: "📋", href: "/dashboard/my-classes", roles: [ROLES.TEACHER] },
@@ -73,37 +78,37 @@ const NAV_TOP: NavItem[] = [
   { label: "Streak", icon: "🔥", href: "/dashboard/my-attendance",   roles: [ROLES.STUDENT] },
   { label: "Badges",     icon: "🏅", href: "/dashboard/my-achievements", roles: [ROLES.STUDENT] },
   // Screening — last for all roles that can see it
-  { label: "Admissions", icon: "🎹", href: "/dashboard/screening",      roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER], matchPrefix: "/dashboard/screening" },
+  { label: "Admissions", icon: "🎹", href: "/dashboard/screening",      roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER], matchPrefix: "/dashboard/screening", sectionKey: "admissions" },
 ];
 
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Finance", icon: "₹",
     items: [
-      { label: "Fees",     icon: "₹", href: "/dashboard/finance",  roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-      { label: "Expenses", icon: "🧾", href: "/dashboard/expenses", roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+      { label: "Fees",     icon: "₹", href: "/dashboard/finance",  roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "fees" },
+      { label: "Expenses", icon: "🧾", href: "/dashboard/expenses", roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "expenses" },
     ],
   },
   {
     label: "Insights & Reports", icon: "📊",
     items: [
-      { label: "Analytics",    icon: "📊", href: "/dashboard/analytics",      roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-      { label: "Leaderboards", icon: "🏆", href: "/dashboard/leaderboards",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-      { label: "My Score",     icon: "⭐", href: "/dashboard/teacher-score",  roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-      { label: "Export",       icon: "⬇", href: "/dashboard/export",          roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+      { label: "Analytics",    icon: "📊", href: "/dashboard/analytics",      roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "analytics" },
+      { label: "Leaderboards", icon: "🏆", href: "/dashboard/leaderboards",   roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "leaderboards" },
+      { label: "My Score",     icon: "⭐", href: "/dashboard/teacher-score",  roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "myScore" },
+      { label: "Export",       icon: "⬇", href: "/dashboard/export",          roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "export" },
     ],
   },
   {
     label: "System Admin", icon: "⚙️",
     items: [
-      { label: "Alerts",     icon: "🔔", href: "/dashboard/alerts",     roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-      { label: "Audit Logs", icon: "📋", href: "/dashboard/audit-logs", roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
-      { label: "History",    icon: "🕐", href: "/dashboard/history",    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+      { label: "Alerts",     icon: "🔔", href: "/dashboard/alerts",     roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "alerts" },
+      { label: "Audit Logs", icon: "📋", href: "/dashboard/audit-logs", roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "auditLogs" },
+      { label: "History",    icon: "🕐", href: "/dashboard/history",    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN], sectionKey: "history" },
     ],
   },
 ];
 
-const BOTTOM_NAV_LABELS = ["Center Suite", "Learner's Suite", "Quest", "Fees", "Streak", "Badges", "Attendance", "Students", "Faculty Suite", "My Classes", "Admissions"];
+const BOTTOM_NAV_LABELS = ["Center Suite", "Admin Suite", "Learner's Suite", "Quest", "Fees", "Streak", "Badges", "Attendance", "Students", "Faculty Suite", "My Classes", "Admissions"];
 
 interface ResolvedNavItem extends NavItem {
   resolvedHref: string;
@@ -237,6 +242,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     if (user.role === ROLES.STUDENT && pathname === "/dashboard") {
       router.replace("/dashboard/student");
     }
+    if (user.role === ROLES.ADMIN && pathname === "/dashboard") {
+      router.replace("/dashboard/admin-suite");
+    }
   }, [loading, user, pathname, router]);
 
   // Save current path so admin/super_admin can resume after reopening
@@ -296,7 +304,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // Flat list — used for pageTitle, bottomNav, isActive
   const visibleNav = useMemo(() => (
     !user ? [] : [...NAV_TOP, ...NAV_GROUPS.flatMap(g => g.items)]
-      .filter(item => item.roles.includes(user.role))
+      .filter(item => item.roles.includes(user.role) && hasSectionAccess(user, item.sectionKey))
       .map(item => ({
         ...item,
         resolvedHref: typeof item.href === "function"
@@ -308,7 +316,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // Top-level standalone items (rendered above accordion groups)
   const topNavItems = useMemo(() => (
     !user ? [] : NAV_TOP
-      .filter(item => item.roles.includes(user.role))
+      .filter(item => item.roles.includes(user.role) && hasSectionAccess(user, item.sectionKey))
       .map(item => ({
         ...item,
         resolvedHref: typeof item.href === "function"
@@ -323,7 +331,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       .map(group => ({
         ...group,
         visibleItems: group.items
-          .filter(item => item.roles.includes(user.role))
+          .filter(item => item.roles.includes(user.role) && hasSectionAccess(user, item.sectionKey))
           .map(item => ({
             ...item,
             resolvedHref: typeof item.href === "function"

@@ -16,6 +16,7 @@ import { KeyboardScreeningContent } from "./keyboard/KeyboardScreeningContent";
 import { DrumScreeningContent } from "./drums/DrumScreeningContent";
 import {
   OptionGroup, MultiOptionGroup, ApplicationQuestionInput, ApplicationQuestionDisplay, ApplicationFormEditor,
+  isQuestionVisible, clearHiddenAnswers,
 } from "./ApplicationQuestionFields";
 import {
   getApplicationForm, defaultApplicationQuestions, formatAnswerForDisplay,
@@ -533,9 +534,9 @@ function EditAdmissionOverlay({
           {/* Musical */}
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>Musical Skills</div>
-            {template.map(q => (
+            {template.filter(q => isQuestionVisible(q, answers)).map(q => (
               <ApplicationQuestionInput key={q.id} question={q} value={answers[q.key]}
-                onChange={v => setAnswers(a => ({ ...a, [q.key]: v }))} />
+                onChange={v => setAnswers(a => clearHiddenAnswers(template, { ...a, [q.key]: v }))} />
             ))}
           </div>
 
@@ -613,8 +614,8 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
   // Fields already rendered in the PDF's fixed "Musical Profile" block —
   // anything else in the template is appended as extra rows.
   const PDF_CORE_KEYS = new Set([
-    "instrumentsToLearn", "purposeOfLearning", "previousExperience",
-    "instrumentsPlayed", "musicalSkill", "howHeardAboutUs",
+    "instrumentsToLearn", "purposeOfLearning", "musicalExperience",
+    "instrumentsPlayed", "howHeardAboutUs",
   ]);
   function extraPdfFields(admission: Record<string, unknown>): { label: string; value: string }[] {
     return template
@@ -743,7 +744,7 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
         admissionNumber: str(adm.admissionNumber),
         studentID:       str(adm.admissionNumber),
         instruments:     arr(adm.instrumentsToLearn),
-        musicalSkill:    str(adm.musicalSkill),
+        musicalExperience: str(adm.musicalExperience),
         photo:           str(adm.photo) || null,
         createdAt:       serverTimestamp(),
       });
@@ -1161,7 +1162,7 @@ function AdmissionsList({ onStartScreening }: { onStartScreening: (name: string)
 
           {/* Musical info */}
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f3f4f6", display: "flex", flexDirection: "column" as const, gap: 10 }}>
-            {template.map(q => (
+            {template.filter(q => isQuestionVisible(q, selected)).map(q => (
               <ApplicationQuestionDisplay key={q.id} question={q} value={selected[q.key]} />
             ))}
           </div>
@@ -1405,8 +1406,8 @@ function ScreeningHub() {
           {/* Instrument selector */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }} className="scr-inst-grid">
             {([
-              { key: "guitar"   as const, icon: "🎸", label: "Guitar Screening",   accent: "#a05a2c", accentBg: "#f7ece1" },
               { key: "keyboard" as const, icon: "🎹", label: "Keyboard Screening", accent: "#0d9488", accentBg: "#f0fdfa" },
+              { key: "guitar"   as const, icon: "🎸", label: "Guitar Screening",   accent: "#a05a2c", accentBg: "#f7ece1" },
               { key: "drums"    as const, icon: "🥁", label: "Drum Screening",     accent: "#dc2626", accentBg: "#fef2f2" },
             ]).map(t => (
               <button key={t.key} type="button" onClick={() => selectTrack(t.key)}
@@ -1440,7 +1441,7 @@ function ScreeningHub() {
 
 export default function ScreeningPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.TEACHER]}>
+    <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.TEACHER]} sectionKey="admissions">
       <Suspense fallback={<div style={{ padding: "60px 0", textAlign: "center", color: "#9ca3af" }}>Loading…</div>}>
         <ScreeningHub />
       </Suspense>
@@ -1768,9 +1769,9 @@ function AdmissionFormContent({ onDone }: { onDone?: () => void } = {}) {
       {/* ── Musical Skills ───────────────────────────────────────────────────── */}
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={s.sectionTitle}>Information on Musical Skills</div>
-        {template.map(q => (
+        {template.filter(q => isQuestionVisible(q, answers)).map(q => (
           <ApplicationQuestionInput key={q.id} question={q} value={answers[q.key]}
-            onChange={v => setAnswers(a => ({ ...a, [q.key]: v }))} />
+            onChange={v => setAnswers(a => clearHiddenAnswers(template, { ...a, [q.key]: v }))} />
         ))}
       </div>
 

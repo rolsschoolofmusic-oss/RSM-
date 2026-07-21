@@ -16,7 +16,7 @@ import type { Lesson } from "@/types/lesson";
 
 export default function LessonsPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER]} sectionKey="syllabus">
       <LessonsContent />
     </ProtectedRoute>
   );

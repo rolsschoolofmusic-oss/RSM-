@@ -60,7 +60,7 @@ type ActiveTab     = "finance" | "attendance" | "students";
 
 export default function HistoryPage() {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.ADMIN]} sectionKey="history">
       <HistoryContent />
     </ProtectedRoute>
   );

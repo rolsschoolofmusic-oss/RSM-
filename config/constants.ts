@@ -37,7 +37,7 @@ export const ATTENDANCE_MODE = {
 
 export const ROLE_ROUTES: Record<string, string> = {
   [ROLES.SUPER_ADMIN]: "/dashboard",
-  [ROLES.ADMIN]: "/dashboard",
+  [ROLES.ADMIN]: "/dashboard/admin-suite",
   [ROLES.TEACHER]: "/dashboard",
   [ROLES.STUDENT]: "/dashboard",
 };

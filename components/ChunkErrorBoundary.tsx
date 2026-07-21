@@ -82,6 +82,15 @@ export default class ChunkErrorBoundary extends React.Component<
       return;
     }
 
+    if (process.env.NODE_ENV !== "production") {
+      // In dev, a chunk 404 means the local .next cache is stale/mid-recompile,
+      // not that a new deploy shipped. Auto-reloading just repeats the same
+      // 404 (and can loop) until the cache is actually fixed, so show the
+      // fallback instead of reloading.
+      console.error("[ChunkErrorBoundary] ChunkLoadError in dev — not auto-reloading.", error);
+      return;
+    }
+
     // Guard: only auto-reload ONCE per 30 seconds to avoid an infinite hard-reload loop
     // if the new deploy itself is broken.
     const RELOAD_KEY = "__chunk_reload_at__";
